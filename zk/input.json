@@ -1,0 +1,8 @@
+{
+  "privateValue": "9950",
+  "salt": "123456789",
+  "threshold": "9900",
+  "commitment": "<poseidon_hash_output>"
+}
+
+
