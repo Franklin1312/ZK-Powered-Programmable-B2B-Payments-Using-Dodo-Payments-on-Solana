@@ -13,8 +13,8 @@ function getApiBase() {
     return `https://${domain}/api`;
   }
 
-  // For Replit: backend runs on localhost:3001, frontend proxied on port 5000
-  return "http://localhost:3001/api";
+  // Default: use relative path, proxied by Vite to localhost:3001
+  return "/api";
 }
 
 const BASE = getApiBase();
