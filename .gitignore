@@ -18,18 +18,21 @@ backend/dist/
 backend/build/
 
 # ─── Anchor / Rust build output ────────────────────────────
-program/target/
+program/target/deps/
+program/target/debug/
+program/target/release/
 program/.anchor/
 program/**/*.rs.bk
 program/**/*.pdb
 Cargo.lock
 
 # ─── ZK build artifacts ───────────────────────────────────
-zk/build/
+# Keep: threshold.wasm, threshold_final.zkey, verification_key.json
+# Ignore: large intermediate ceremony files and re-generatable outputs
 zk/build/pot*
-zk/build/*.wasm
-zk/build/*.wasm.map
-zk/keys/*.zkey
+zk/build/*.r1cs
+zk/build/*.sym
+zk/keys/*_0000.zkey
 zk/keys/*.ptau
 
 # ─── Environment files ────────────────────────────────────

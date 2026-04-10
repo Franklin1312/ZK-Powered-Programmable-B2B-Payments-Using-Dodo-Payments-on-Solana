@@ -1,0 +1,97 @@
+{
+  "address": "DEFgmMqroNELL3S9HxaERDYjKapg3RgeWTQ44RPwSUmC",
+  "metadata": {
+    "name": "escrow",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Escrow program for ZK-verified conditional payments"
+  },
+  "instructions": [
+    {
+      "name": "initializeEscrow",
+      "discriminator": [243, 160, 77, 153, 11, 92, 48, 209],
+      "accounts": [
+        {
+          "name": "escrowState",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [101, 115, 99, 114, 111, 119] },
+              { "kind": "account", "path": "payer" }
+            ]
+          }
+        },
+        { "name": "payer", "writable": true, "signer": true },
+        { "name": "systemProgram", "address": "11111111111111111111111111111111" }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" },
+        { "name": "threshold", "type": "u64" },
+        { "name": "commitment", "type": { "array": ["u8", 32] } },
+        { "name": "recipient", "type": "pubkey" }
+      ]
+    },
+    {
+      "name": "verifyAndRelease",
+      "discriminator": [106, 23, 158, 80, 93, 72, 61, 30],
+      "accounts": [
+        {
+          "name": "escrowState",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              { "kind": "const", "value": [101, 115, 99, 114, 111, 119] },
+              { "kind": "account", "path": "escrowState.payer" }
+            ]
+          }
+        },
+        { "name": "recipient", "signer": true }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "EscrowState",
+      "discriminator": [19, 90, 148, 111, 55, 130, 229, 108]
+    }
+  ],
+  "events": [
+    {
+      "name": "PaymentReleased",
+      "discriminator": [160, 132, 155, 232, 46, 254, 69, 219]
+    }
+  ],
+  "errors": [
+    { "code": 6000, "name": "AlreadyReleased", "msg": "Already released" },
+    { "code": 6001, "name": "Unauthorized", "msg": "Unauthorized" }
+  ],
+  "types": [
+    {
+      "name": "EscrowState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "payer", "type": "pubkey" },
+          { "name": "recipient", "type": "pubkey" },
+          { "name": "amount", "type": "u64" },
+          { "name": "threshold", "type": "u64" },
+          { "name": "commitment", "type": { "array": ["u8", 32] } },
+          { "name": "isReleased", "type": "bool" },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "PaymentReleased",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "payer", "type": "pubkey" },
+          { "name": "recipient", "type": "pubkey" },
+          { "name": "amount", "type": "u64" }
+        ]
+      }
+    }
+  ]
+}
