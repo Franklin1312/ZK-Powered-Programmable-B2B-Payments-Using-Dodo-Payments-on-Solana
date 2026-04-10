@@ -49,6 +49,46 @@ app.get("/api/status/:escrowPda", async (req, res) => {
   }
 });
 
+app.get("/api/demo", (req, res) => {
+  try {
+    const path = require("path");
+    const fs   = require("fs");
+    const { Keypair, PublicKey } = require("@solana/web3.js");
+
+    const demoFile = path.join(__dirname, "../demo-state.json");
+    if (fs.existsSync(demoFile)) {
+      const saved = JSON.parse(fs.readFileSync(demoFile, "utf8"));
+      // Derive payerPubkey from env if not in saved file
+      if (!saved.payerPubkey) {
+        const payer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(process.env.PAYER_PRIVATE_KEY)));
+        saved.payerPubkey = payer.publicKey.toBase58();
+      }
+      return res.json(saved);
+    }
+
+    // No demo-state.json yet — derive public keys from env vars
+    const payer     = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(process.env.PAYER_PRIVATE_KEY)));
+    const recipient = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(process.env.RECIPIENT_PRIVATE_KEY)));
+
+    const [escrowPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("escrow"), payer.publicKey.toBuffer()],
+      new PublicKey(process.env.PROGRAM_ID)
+    );
+
+    res.json({
+      escrowPDA:       escrowPDA.toBase58(),
+      payerPubkey:     payer.publicKey.toBase58(),
+      recipientPubkey: recipient.publicKey.toBase58(),
+      commitment:      "",
+      threshold:       9900,
+      privateValue:    9950,
+      salt:            12345,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/health", (_, res) => {
   res.json({ 
     status: "ok",

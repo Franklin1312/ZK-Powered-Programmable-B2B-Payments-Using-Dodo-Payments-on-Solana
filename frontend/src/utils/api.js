@@ -22,3 +22,4 @@ const BASE = getApiBase();
 export const createPayment  = (d) => axios.post(`${BASE}/payment/create`, d);
 export const generateProof  = (d) => axios.post(`${BASE}/proof/generate`, d);
 export const releasePayment = (d) => axios.post(`${BASE}/release`, d);
+export const getDemoState   = ()  => axios.get(`${BASE}/demo`);

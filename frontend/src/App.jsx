@@ -3,6 +3,7 @@ import LandingPage        from "./pages/Landingpage";
 import PayerDashboard     from "./pages/PayerDashboard";
 import RecipientDashboard from "./pages/RecipientDashboard";
 import StatusChecker      from "./pages/StatusChecker";
+import { getDemoState }   from "./utils/api";
 import "./App.css";
 
 const TABS = [
@@ -57,7 +58,10 @@ export default function App() {
           <StatusPill color="#6366f1" dot="#818cf8" label="Solana Devnet" />
           <StatusPill color="#0891b2" dot="#22d3ee" label="Groth16 ZK"   />
           <StatusPill color="#059669" dot="#34d399" label="Dodo Payments" />
-          <button onClick={() => setDemoState({ _demo: true })}
+          <button onClick={async () => {
+              try { const r = await getDemoState(); setDemoState(r.data); }
+              catch { setDemoState({ _demo: true }); }
+            }}
             style={{ marginLeft: 8, background: "#fffbeb", border: "1px solid #fde68a",
               color: "#92400e", borderRadius: 20, padding: "4px 12px", fontSize: 11,
               fontWeight: 600, cursor: "pointer", fontFamily: "'DM Mono', monospace",
