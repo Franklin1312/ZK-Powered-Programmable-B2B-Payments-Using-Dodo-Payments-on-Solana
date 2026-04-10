@@ -31,8 +31,7 @@ app.get("/api/status/:escrowPda", async (req, res) => {
     const idl = require("../../program/target/idl/escrow.json");
     const wallet = new anchor.Wallet(Keypair.generate());
     const provider = new anchor.AnchorProvider(conn, wallet, {});
-    const programId = new PublicKey(process.env.PROGRAM_ID);
-    const program = new anchor.Program(idl, programId, provider);
+    const program = new anchor.Program(idl, provider);
 
     const state = await program.account.escrowState.fetch(
       new PublicKey(req.params.escrowPda)

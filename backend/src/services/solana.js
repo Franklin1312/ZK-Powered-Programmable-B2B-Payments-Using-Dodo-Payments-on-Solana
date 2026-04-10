@@ -12,8 +12,7 @@ function getProgram(keypair) {
   const wallet = new anchor.Wallet(keypair);
   const provider = new anchor.AnchorProvider(connection, wallet, { commitment: "confirmed" });
   const idl = require("../../../program/target/idl/escrow.json");
-  const programId = new PublicKey(process.env.PROGRAM_ID);
-  return new anchor.Program(idl, programId, provider);
+  return new anchor.Program(idl, provider);
 }
 
 async function initializeEscrow({ recipientPubkey, amount, threshold, commitment }) {
