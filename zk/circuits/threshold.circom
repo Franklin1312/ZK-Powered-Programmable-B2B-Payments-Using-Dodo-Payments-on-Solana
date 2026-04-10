@@ -1,5 +1,8 @@
 pragma circom 2.0.0;
 
+include "../../backend/node_modules/circomlib/circuits/bitify.circom";
+include "../../backend/node_modules/circomlib/circuits/poseidon.circom";
+
 // Proves: private_value > public_threshold
 // WITHOUT revealing private_value
 template ThresholdCheck() {

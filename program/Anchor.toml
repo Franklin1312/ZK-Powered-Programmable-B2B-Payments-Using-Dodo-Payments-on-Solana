@@ -1,0 +1,16 @@
+[toolchain]
+anchor_version = "1.0.0"
+package_manager = "yarn"
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+escrow = "DEFgmMqroNELL3S9HxaERDYjKapg3RgeWTQ44RPwSUmC"
+
+[provider]
+cluster = "Devnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "echo 'No Anchor tests configured yet'"

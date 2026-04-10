@@ -3,9 +3,13 @@
 set -e
 
 cd zk
+mkdir -p build keys
 
 # 1. Compile circuit
-circom circuits/threshold.circom --r1cs --wasm --sym -o build/
+circom circuits/threshold.circom \
+  --r1cs --wasm --sym \
+  -l ../backend/node_modules \
+  -o build/
 
 # 2. Powers of Tau (use existing ptau for hackathon)
 snarkjs powersoftau new bn128 12 build/pot12_0000.ptau -v
