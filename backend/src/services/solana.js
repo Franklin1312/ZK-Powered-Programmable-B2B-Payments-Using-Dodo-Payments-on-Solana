@@ -29,22 +29,35 @@ async function initializeEscrow({ recipientPubkey, amount, threshold, commitment
   const commitHex = BigInt(commitment).toString(16).padStart(64, "0");
   Buffer.from(commitHex, "hex").copy(commitBuf);
 
-  const tx = await program.methods
-    .initializeEscrow(
-      new anchor.BN(amount),
-      new anchor.BN(threshold),
-      [...commitBuf],
-      new PublicKey(recipientPubkey)
-    )
-    .accounts({
-      escrowState: escrowPDA,
-      payer: payer.publicKey,
-      systemProgram: anchor.web3.SystemProgram.programId,
-    })
-    .signers([payer])
-    .rpc();
+  try {
+    const tx = await program.methods
+      .initializeEscrow(
+        new anchor.BN(amount),
+        new anchor.BN(threshold),
+        [...commitBuf],
+        new PublicKey(recipientPubkey)
+      )
+      .accounts({
+        escrowState: escrowPDA,
+        payer: payer.publicKey,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .signers([payer])
+      .rpc();
 
-  return { escrowPDA: escrowPDA.toBase58(), tx };
+    return { escrowPDA: escrowPDA.toBase58(), tx };
+  } catch (err) {
+    // If the escrow PDA already exists on-chain, reuse it
+    const alreadyExists =
+      err?.transactionLogs?.some?.((l) => l.includes("already in use")) ||
+      err?.message?.includes("already in use");
+
+    if (alreadyExists) {
+      console.log("[Solana] Escrow PDA already exists — reusing:", escrowPDA.toBase58());
+      return { escrowPDA: escrowPDA.toBase58(), tx: null };
+    }
+    throw err;
+  }
 }
 
 async function releasePayment({ payerPubkey, proof, publicSignals }) {
