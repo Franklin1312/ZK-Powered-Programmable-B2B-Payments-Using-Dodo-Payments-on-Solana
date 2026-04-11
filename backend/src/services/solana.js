@@ -89,6 +89,13 @@ async function releasePayment({ payerPubkey, proof, publicSignals }) {
   if (!escrowPDA) {
     throw new Error(`No on-chain escrow found for payer ${payer.publicKey.toBase58()}`);
   }
+
+  // If already released on-chain, return idempotent success — no need to re-submit
+  if (escrowState.isReleased) {
+    console.log("[Solana] Escrow already released on-chain — returning idempotent success");
+    return { sig: null, alreadyReleased: true };
+  }
+
   const storedRecipient = escrowState.recipient.toBase58();
 
   const payerKp    = payer;
@@ -123,7 +130,7 @@ async function releasePayment({ payerPubkey, proof, publicSignals }) {
     commitment: "confirmed",
   });
 
-  return sig;
+  return { sig, alreadyReleased: false };
 }
 
 module.exports = { initializeEscrow, releasePayment };

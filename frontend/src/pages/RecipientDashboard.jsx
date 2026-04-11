@@ -55,9 +55,11 @@ export default function RecipientDashboard({ escrowData, demoState, addEvent, up
         publicSignals: proof.publicSignals,
         payerPubkey: form.payerPubkey,
       });
-      updateLastEvent("done", `Tx: ${res.data.tx?.slice(0,20)}...`);
-      addEvent("Payment released!", `${res.data.tx?.slice(0,20)}...`, "done");
-      setTx(res.data.tx);
+      const { tx: txSig, alreadyReleased, message } = res.data;
+      const txLabel = txSig ? `Tx: ${txSig.slice(0, 20)}...` : "Escrow already settled on-chain";
+      updateLastEvent("done", txLabel);
+      addEvent(alreadyReleased ? "Escrow already settled" : "Payment released!", message, "done");
+      setTx(txSig || "already-released");
       setStep(3);
     } catch (e) {
       updateLastEvent("error", e.response?.data?.error || e.message);
@@ -167,17 +169,27 @@ export default function RecipientDashboard({ escrowData, demoState, addEvent, up
 
         {step === 3 && tx && (
           <div className="alert alert-success" style={{ marginTop:16 }}>
-            <p className="alert-title" style={{ fontSize:15 }}>Payment released!</p>
-            <div style={{ display:"flex", justifyContent:"space-between", gap:12 }}>
-              <span style={{ fontSize:11, color:"#059669" }}>Transaction</span>
-              <span style={{ fontSize:11, fontFamily:"var(--font-mono)",
-                color:"#065f46", wordBreak:"break-all", textAlign:"right" }}>{tx}</span>
-            </div>
-            <a className="alert-link"
-              href={`https://explorer.solana.com/tx/${tx}?cluster=devnet`}
-              target="_blank" rel="noreferrer">
-              View on Solana Explorer →
-            </a>
+            <p className="alert-title" style={{ fontSize:15 }}>
+              {tx === "already-released" ? "Escrow already settled" : "Payment released!"}
+            </p>
+            {tx !== "already-released" ? (
+              <>
+                <div style={{ display:"flex", justifyContent:"space-between", gap:12 }}>
+                  <span style={{ fontSize:11, color:"#059669" }}>Transaction</span>
+                  <span style={{ fontSize:11, fontFamily:"var(--font-mono)",
+                    color:"#065f46", wordBreak:"break-all", textAlign:"right" }}>{tx}</span>
+                </div>
+                <a className="alert-link"
+                  href={`https://explorer.solana.com/tx/${tx}?cluster=devnet`}
+                  target="_blank" rel="noreferrer">
+                  View on Solana Explorer →
+                </a>
+              </>
+            ) : (
+              <p style={{ fontSize:11, color:"#065f46", margin:0 }}>
+                This escrow was already released on-chain. The payment has been settled.
+              </p>
+            )}
           </div>
         )}
 
