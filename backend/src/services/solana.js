@@ -1,5 +1,5 @@
 const anchor = require("@coral-xyz/anchor");
-const { Connection, Keypair, PublicKey } = require("@solana/web3.js");
+const { Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction } = require("@solana/web3.js");
 const { getOrCreateAssociatedTokenAccount, mintTo } = require("@solana/spl-token");
 
 const connection = new Connection(process.env.SOLANA_RPC, "confirmed");
@@ -61,24 +61,53 @@ async function initializeEscrow({ recipientPubkey, amount, threshold, commitment
 }
 
 async function releasePayment({ payerPubkey, proof, publicSignals }) {
-  const recipient = loadKeypair("RECIPIENT_PRIVATE_KEY");
-  const program = getProgram(recipient);
+  const payer = loadKeypair("PAYER_PRIVATE_KEY");
+  const program = getProgram(payer);
 
   const [escrowPDA] = PublicKey.findProgramAddressSync(
     [Buffer.from("escrow"), new PublicKey(payerPubkey).toBuffer()],
     program.programId
   );
 
-  const tx = await program.methods
+  // Fetch the on-chain escrow to find out which keypair is the stored recipient.
+  // In the seeded demo the stored recipient.toBase58() === payer.publicKey.toBase58(),
+  // so we always resolve the correct signer from our known keypairs.
+  const escrowState = await program.account.escrowState.fetch(escrowPDA);
+  const storedRecipient = escrowState.recipient.toBase58();
+
+  const payerKp    = payer;
+  const recipientKp = loadKeypair("RECIPIENT_PRIVATE_KEY");
+
+  // Pick whichever of our two keypairs matches the stored recipient
+  const recipientSigner =
+    storedRecipient === payerKp.publicKey.toBase58()    ? payerKp :
+    storedRecipient === recipientKp.publicKey.toBase58() ? recipientKp :
+    (() => { throw new Error(`Stored recipient ${storedRecipient} not in known keypairs`); })();
+
+  console.log("[Solana] Stored recipient:", storedRecipient);
+  console.log("[Solana] Using signer    :", recipientSigner.publicKey.toBase58());
+
+  // Build the instruction and set fee payer = payer (has SOL)
+  const ix = await program.methods
     .verifyAndRelease()
     .accounts({
       escrowState: escrowPDA,
-      recipient: recipient.publicKey,
+      recipient: recipientSigner.publicKey,
     })
-    .signers([recipient])
-    .rpc();
+    .instruction();
 
-  return tx;
+  const { blockhash } = await connection.getLatestBlockhash("confirmed");
+  const tx = new Transaction({ feePayer: payer.publicKey, recentBlockhash: blockhash });
+  tx.add(ix);
+
+  const signers = recipientSigner === payer ? [payer] : [payer, recipientSigner];
+  tx.sign(...signers);
+
+  const sig = await sendAndConfirmTransaction(connection, tx, signers, {
+    commitment: "confirmed",
+  });
+
+  return sig;
 }
 
 module.exports = { initializeEscrow, releasePayment };
