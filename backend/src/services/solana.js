@@ -64,15 +64,31 @@ async function releasePayment({ payerPubkey, proof, publicSignals }) {
   const payer = loadKeypair("PAYER_PRIVATE_KEY");
   const program = getProgram(payer);
 
-  const [escrowPDA] = PublicKey.findProgramAddressSync(
-    [Buffer.from("escrow"), new PublicKey(payerPubkey).toBuffer()],
-    program.programId
-  );
+  // Always derive the PDA from the backend's own payer keypair — this is the
+  // authoritative source of truth. The payerPubkey from the frontend is only
+  // used as a fallback if the primary PDA has no on-chain data.
+  const candidates = [payer.publicKey];
+  if (payerPubkey) {
+    try { candidates.push(new PublicKey(payerPubkey)); } catch (_) {}
+  }
 
-  // Fetch the on-chain escrow to find out which keypair is the stored recipient.
-  // In the seeded demo the stored recipient.toBase58() === payer.publicKey.toBase58(),
-  // so we always resolve the correct signer from our known keypairs.
-  const escrowState = await program.account.escrowState.fetch(escrowPDA);
+  let escrowPDA, escrowState;
+  for (const pubkey of candidates) {
+    const [pda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("escrow"), pubkey.toBuffer()],
+      program.programId
+    );
+    try {
+      escrowState = await program.account.escrowState.fetch(pda);
+      escrowPDA = pda;
+      console.log("[Solana] Found escrow PDA:", escrowPDA.toBase58(), "(derived from", pubkey.toBase58() + ")");
+      break;
+    } catch (_) {}
+  }
+
+  if (!escrowPDA) {
+    throw new Error(`No on-chain escrow found for payer ${payer.publicKey.toBase58()}`);
+  }
   const storedRecipient = escrowState.recipient.toBase58();
 
   const payerKp    = payer;
