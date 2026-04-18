@@ -55,7 +55,7 @@ export default function App() {
           </div>
         </div>
         <div className="header-pills">
-          <StatusPill color="#6366f1" dot="#818cf8" label="Solana Devnet" />
+          <StatusPill color="#6366f1" dot="#818cf8" label="Solana Testnet" />
           <StatusPill color="#0891b2" dot="#22d3ee" label="Groth16 ZK"   />
           <StatusPill color="#059669" dot="#34d399" label="Dodo Payments" />
           <button onClick={async () => {
@@ -75,7 +75,7 @@ export default function App() {
       <div style={{ position:"relative", zIndex:9, background:"#fff",
         borderBottom:"1px solid #f1f5f9", display:"flex", overflowX:"auto", padding:"0 40px" }}>
         {[
-          ["Network",     "Solana Devnet"],
+          ["Network",     "Solana Testnet"],
           ["ZK System",   "Groth16 · bn128"],
           ["Circuit",     "threshold.circom"],
           ["Hash fn",     "Poseidon"],

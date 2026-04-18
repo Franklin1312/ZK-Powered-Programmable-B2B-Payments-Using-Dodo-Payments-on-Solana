@@ -41,7 +41,7 @@ export default function LandingPage({ onEnter }) {
       {/* Hero */}
       <div style={s.hero}>
         <div style={s.badge}>
-          <span style={s.badgeDot} /> Live on Solana Devnet
+          <span style={s.badgeDot} /> Live on Solana Testnet
         </div>
 
         <h1 style={s.h1}>

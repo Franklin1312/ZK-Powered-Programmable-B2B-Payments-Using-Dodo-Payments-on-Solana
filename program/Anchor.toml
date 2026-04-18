@@ -9,7 +9,7 @@ skip-lint = false
 escrow = "DEFgmMqroNELL3S9HxaERDYjKapg3RgeWTQ44RPwSUmC"
 
 [provider]
-cluster = "Devnet"
+cluster = "Testnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

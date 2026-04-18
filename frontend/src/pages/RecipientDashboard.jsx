@@ -180,7 +180,7 @@ export default function RecipientDashboard({ escrowData, demoState, addEvent, up
                     color:"#065f46", wordBreak:"break-all", textAlign:"right" }}>{tx}</span>
                 </div>
                 <a className="alert-link"
-                  href={`https://explorer.solana.com/tx/${tx}?cluster=devnet`}
+                  href={`https://explorer.solana.com/tx/${tx}?cluster=testnet`}
                   target="_blank" rel="noreferrer">
                   View on Solana Explorer →
                 </a>

@@ -125,7 +125,7 @@ export default function StatusChecker() {
 
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               <a className="btn btn-outline"
-                href={`https://explorer.solana.com/address/${pda}?cluster=devnet`}
+                href={`https://explorer.solana.com/address/${pda}?cluster=testnet`}
                 target="_blank" rel="noreferrer">
                 View account →
               </a>

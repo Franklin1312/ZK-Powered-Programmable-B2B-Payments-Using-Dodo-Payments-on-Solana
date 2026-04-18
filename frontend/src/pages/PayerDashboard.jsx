@@ -114,7 +114,7 @@ export default function PayerDashboard({ onEscrowCreated, demoState, addEvent, u
             <InfoRow label="Transaction" value={result.tx} />
             <InfoRow label="Commitment"  value={result.commitment?.slice(0,28) + "..."} />
             <a className="alert-link" style={{ marginTop:14 }}
-              href={`https://explorer.solana.com/tx/${result.tx}?cluster=devnet`}
+              href={`https://explorer.solana.com/tx/${result.tx}?cluster=testnet`}
               target="_blank" rel="noreferrer">
               View on Solana Explorer →
             </a>

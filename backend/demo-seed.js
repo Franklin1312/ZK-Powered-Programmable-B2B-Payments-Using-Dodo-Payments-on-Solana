@@ -68,7 +68,7 @@ async function seed() {
   console.log(" Escrow PDA:", escrowPDA.toBase58());
   if (tx) {
     console.log(" Tx:", tx);
-    console.log(" Explorer:", `https://explorer.solana.com/tx/${tx}?cluster=devnet`);
+    console.log(" Explorer:", `https://explorer.solana.com/tx/${tx}?cluster=testnet`);
   }
   console.log("\n Demo state saved to demo-state.json");
   console.log(" Share commitment with recipient:", commitment.slice(0, 30) + "...");

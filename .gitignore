@@ -18,9 +18,7 @@ backend/dist/
 backend/build/
 
 # ─── Anchor / Rust build output ────────────────────────────
-program/target/deps/
-program/target/debug/
-program/target/release/
+program/target/
 program/.anchor/
 program/**/*.rs.bk
 program/**/*.pdb
