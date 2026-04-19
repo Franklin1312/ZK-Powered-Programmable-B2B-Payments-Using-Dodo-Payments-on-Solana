@@ -112,6 +112,16 @@ export default function PayerDashboard({ onEscrowCreated, demoState, addEvent, u
             </div>
             <InfoRow label="Escrow PDA"  value={result.escrowPDA} />
             <InfoRow label="Transaction" value={result.tx} />
+            {result.checkoutUrl && (
+            <a href={result.checkoutUrl} target="_blank" rel="noreferrer" className="alert-link">
+              Complete payment via Dodo →
+            </a>
+            )}
+            {result.isSimulated && (
+              <p style={{fontSize:11, color:"var(--amber-600)", marginTop:8}}>
+                Running in simulation mode — set DODO_API_KEY for live payments
+              </p>
+            )}
             <InfoRow label="Commitment"  value={result.commitment?.slice(0,28) + "..."} />
             <a className="alert-link" style={{ marginTop:14 }}
               href={`https://explorer.solana.com/tx/${result.tx}?cluster=testnet`}

@@ -88,7 +88,63 @@ app.get("/api/demo", (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// ── Dodo Payments webhook ───────────────────────────────────
+// Receives payment confirmation from Dodo and triggers escrow creation
+app.post("/webhook/dodo", express.raw({ type: "application/json" }), async (req, res) => {
+  const sig     = req.headers["webhook-signature"] || req.headers["svix-signature"];
+  const secret  = process.env.DODO_WEBHOOK_SECRET;
 
+  // Verify webhook signature (production)
+  if (secret && sig && !secret.startsWith("whsec_YOUR")) {
+    try {
+      const { Webhook } = require("svix");
+      const wh = new Webhook(secret);
+      wh.verify(req.body, {
+        "svix-id":        req.headers["svix-id"],
+        "svix-timestamp": req.headers["svix-timestamp"],
+        "svix-signature": req.headers["svix-signature"],
+      });
+    } catch (err) {
+      console.error("[Webhook] Signature verification failed:", err.message);
+      return res.status(400).json({ error: "Invalid signature" });
+    }
+  }
+
+  const event = JSON.parse(req.body.toString());
+  console.log("[Webhook] Dodo event:", event.type, event.data?.id);
+
+  if (event.type === "payment.succeeded" || event.type === "payment_intent.succeeded") {
+    const dodoPaymentId = event.data?.id;
+    const metadata      = event.data?.metadata || {};
+    const localId       = metadata.localId;
+
+    if (localId) {
+      const dodo   = require("./src/services/dodo");
+      const solana = require("./src/services/solana");
+      const zk     = require("./src/services/zk");
+
+      try {
+        await dodo.confirmPayment(localId);
+
+        // If metadata has escrow params, auto-create the escrow
+        if (metadata.threshold && metadata.recipientId && metadata.privateValue) {
+          const commitment = await zk.computeCommitment(metadata.privateValue, metadata.salt || 12345);
+          await solana.initializeEscrow({
+            recipientPubkey: metadata.recipientId,
+            amount: Number(event.data.amount) * 1_000,  // cents → USDC microunits
+            threshold: Number(metadata.threshold),
+            commitment,
+          });
+          console.log("[Webhook] Escrow auto-created after Dodo payment");
+        }
+      } catch (err) {
+        console.error("[Webhook] Error processing payment:", err.message);
+      }
+    }
+  }
+
+  res.json({ received: true });
+});
 app.get("/health", (_, res) => {
   res.json({ 
     status: "ok",

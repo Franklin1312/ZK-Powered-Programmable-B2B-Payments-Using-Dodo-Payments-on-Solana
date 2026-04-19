@@ -34,7 +34,7 @@ zk/keys/*_0000.zkey
 zk/keys/*.ptau
 
 # ─── Environment files ────────────────────────────────────
-.env
+/backend/.env
 .env.local
 .env.*.local
 *.env
@@ -97,3 +97,4 @@ test-output.json
 *.temp
 .cache/
 dist-*
+backend/.env
