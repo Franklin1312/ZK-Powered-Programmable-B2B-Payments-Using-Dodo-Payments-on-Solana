@@ -119,9 +119,9 @@ app.post("/webhook/dodo", express.raw({ type: "application/json" }), async (req,
     const localId       = metadata.localId;
 
     if (localId) {
-      const dodo   = require("./src/services/dodo");
-      const solana = require("./src/services/solana");
-      const zk     = require("./src/services/zk");
+      const dodo   = require("./services/dodo");
+      const solana = require("./services/solana");
+      const zk     = require("./services/zk");
 
       try {
         await dodo.confirmPayment(localId);
