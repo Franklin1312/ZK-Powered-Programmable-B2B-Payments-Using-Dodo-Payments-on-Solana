@@ -5,8 +5,8 @@ package_manager = "yarn"
 resolution = true
 skip-lint = false
 
-[programs.localnet]
-escrow = "CMLTNydebLfLCbnTyD2d6D2duBuiJjgHkhkJFJ4KcntL"
+[programs.testnet]
+escrow = "DEFgmMqroNELL3S9HxaERDYjKapg3RgeWTQ44RPwSUmC"
 
 [provider]
 cluster = "Testnet"
