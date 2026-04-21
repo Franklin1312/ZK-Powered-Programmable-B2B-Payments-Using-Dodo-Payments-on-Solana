@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import LandingPage        from "./pages/Landingpage";
 import PayerDashboard     from "./pages/PayerDashboard";
 import RecipientDashboard from "./pages/RecipientDashboard";
 import StatusChecker      from "./pages/StatusChecker";
 import { getDemoState }   from "./utils/api";
+import { getPhantomProvider } from "./utils/wallet";
 import "./App.css";
 
 const TABS = [
@@ -18,6 +19,42 @@ export default function App() {
   const [escrowData, setEscrowData] = useState(null);
   const [demoState,  setDemoState]  = useState(null);
   const [txEvents,   setTxEvents]   = useState([]);
+  const [walletPubkey, setWalletPubkey] = useState("");
+
+  useEffect(() => {
+    const provider = getPhantomProvider();
+    if (!provider?.isPhantom) return;
+
+    const onConnect = (pubkey) => setWalletPubkey(pubkey?.toBase58?.() || "");
+    const onDisconnect = () => setWalletPubkey("");
+
+    provider.on("connect", onConnect);
+    provider.on("disconnect", onDisconnect);
+
+    provider.connect({ onlyIfTrusted: true }).catch(() => {});
+
+    return () => {
+      provider.off("connect", onConnect);
+      provider.off("disconnect", onDisconnect);
+    };
+  }, []);
+
+  const connectWallet = async () => {
+    const provider = getPhantomProvider();
+    if (!provider?.isPhantom) {
+      window.open("https://phantom.app/", "_blank", "noopener,noreferrer");
+      return;
+    }
+    const res = await provider.connect();
+    setWalletPubkey(res.publicKey.toBase58());
+  };
+
+  const disconnectWallet = async () => {
+    const provider = getPhantomProvider();
+    if (!provider?.isPhantom) return;
+    await provider.disconnect();
+    setWalletPubkey("");
+  };
 
   const addEvent = (label, sub, status = "done") => {
     const ts = new Date().toLocaleTimeString("en-US", { hour12: false });
@@ -58,6 +95,15 @@ export default function App() {
           <StatusPill color="#6366f1" dot="#818cf8" label="Solana Testnet" />
           <StatusPill color="#0891b2" dot="#22d3ee" label="Groth16 ZK"   />
           <StatusPill color="#059669" dot="#34d399" label="Dodo Payments" />
+          <button
+            onClick={walletPubkey ? disconnectWallet : connectWallet}
+            style={{ marginLeft: 8, background: walletPubkey ? "#ecfdf5" : "#eff6ff",
+              border: `1px solid ${walletPubkey ? "#a7f3d0" : "#bfdbfe"}`,
+              color: walletPubkey ? "#065f46" : "#1d4ed8", borderRadius: 20,
+              padding: "4px 12px", fontSize: 11, fontWeight: 600, cursor: "pointer",
+              fontFamily: "'DM Mono', monospace", letterSpacing: "0.2px" }}>
+            {walletPubkey ? `Wallet ${walletPubkey.slice(0, 4)}...${walletPubkey.slice(-4)}` : "Connect Phantom"}
+          </button>
           <button onClick={async () => {
               try { const r = await getDemoState(); setDemoState(r.data); }
               catch { setDemoState({ _demo: true }); }
@@ -117,8 +163,9 @@ export default function App() {
         <div className="content-fade" key={role}>
           {role === "payer" && (
             <PayerDashboard
-              onEscrowCreated={(data) => { setEscrowData(data); setDemoState(data); }}
+              onEscrowCreated={(data) => { setEscrowData(data); }}
               demoState={demoState}
+              connectedPayer={walletPubkey}
               addEvent={addEvent}
               updateLastEvent={updateLastEvent}
               txEvents={txEvents}

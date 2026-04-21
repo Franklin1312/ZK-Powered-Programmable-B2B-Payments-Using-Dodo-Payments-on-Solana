@@ -62,8 +62,6 @@ try {
 
 // Test 3: File paths
 console.log("\n3. Checking required files...");
-const fs = require('fs');
-const path = require('path');
 
 // Get the workspace root (parent of backend directory)
 const workspaceRoot = path.resolve(__dirname, '..');

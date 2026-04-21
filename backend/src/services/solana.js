@@ -1,5 +1,6 @@
 const anchor = require("@coral-xyz/anchor");
-const { Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction } = require("@solana/web3.js");
+const crypto = require("crypto");
+const { Connection, Keypair, PublicKey, Transaction } = require("@solana/web3.js");
 const { getOrCreateAssociatedTokenAccount, mintTo } = require("@solana/spl-token");
 
 const connection = new Connection(process.env.SOLANA_RPC, "confirmed");
@@ -15,26 +16,51 @@ function getProgram(keypair) {
   return new anchor.Program(idl, provider);
 }
 
-async function initializeEscrow({ recipientPubkey, amount, threshold, commitment }) {
-  const payer = loadKeypair("PAYER_PRIVATE_KEY");
-  const program = getProgram(payer);
-
-  const [escrowPDA] = PublicKey.findProgramAddressSync(
-    [Buffer.from("escrow"), payer.publicKey.toBuffer()],
-    program.programId
-  );
-
-  // Commitment as 32-byte array
+function commitmentToBytes(commitment) {
   const commitBuf = Buffer.alloc(32);
   const commitHex = BigInt(commitment).toString(16).padStart(64, "0");
   Buffer.from(commitHex, "hex").copy(commitBuf);
+  return [...commitBuf];
+}
+
+function paymentRefToBytes(paymentRef) {
+  if (!paymentRef || typeof paymentRef !== "string") {
+    throw new Error("paymentRef is required to derive escrow PDA");
+  }
+  const digest = crypto.createHash("sha256").update(paymentRef).digest();
+  return [...digest];
+}
+
+function deriveEscrowPDA(program, payerPubkey, paymentRefBytes) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("escrow"), payerPubkey.toBuffer(), Buffer.from(paymentRefBytes)],
+    program.programId
+  );
+}
+
+async function readEscrowState(program, escrowPDA) {
+  try {
+    return await program.account.escrowState.fetch(escrowPDA);
+  } catch (_) {
+    return null;
+  }
+}
+
+async function initializeEscrow({ recipientPubkey, amount, threshold, commitment, paymentRef }) {
+  const payer = loadKeypair("PAYER_PRIVATE_KEY");
+  const program = getProgram(payer);
+
+  const paymentRefBytes = paymentRefToBytes(paymentRef);
+  const [escrowPDA] = deriveEscrowPDA(program, payer.publicKey, paymentRefBytes);
+  const commitmentBytes = commitmentToBytes(commitment);
 
   try {
     const tx = await program.methods
       .initializeEscrow(
         new anchor.BN(amount),
         new anchor.BN(threshold),
-        [...commitBuf],
+        commitmentBytes,
+        paymentRefBytes,
         new PublicKey(recipientPubkey)
       )
       .accounts({
@@ -45,7 +71,12 @@ async function initializeEscrow({ recipientPubkey, amount, threshold, commitment
       .signers([payer])
       .rpc();
 
-    return { escrowPDA: escrowPDA.toBase58(), tx };
+    return {
+      escrowPDA: escrowPDA.toBase58(),
+      tx,
+      reusedEscrow: false,
+      isReleased: false,
+    };
   } catch (err) {
     // If the escrow PDA already exists on-chain, reuse it
     const alreadyExists =
@@ -54,68 +85,122 @@ async function initializeEscrow({ recipientPubkey, amount, threshold, commitment
 
     if (alreadyExists) {
       console.log("[Solana] Escrow PDA already exists — reusing:", escrowPDA.toBase58());
-      return { escrowPDA: escrowPDA.toBase58(), tx: null };
+      let isReleased = null;
+      try {
+        const state = await program.account.escrowState.fetch(escrowPDA);
+        isReleased = state.isReleased;
+      } catch (_) {
+        // Keep null when state fetch fails; callers can still handle reuse safely.
+      }
+
+      return {
+        escrowPDA: escrowPDA.toBase58(),
+        tx: null,
+        reusedEscrow: true,
+        isReleased,
+      };
     }
     throw err;
   }
 }
 
-async function releasePayment({ payerPubkey, proof, publicSignals }) {
+async function buildInitializeEscrowTx({ payerPubkey, recipientPubkey, amount, threshold, commitment, paymentRef }) {
+  const backendSigner = loadKeypair("PAYER_PRIVATE_KEY");
+  const program = getProgram(backendSigner);
+  const payer = new PublicKey(payerPubkey);
+  const recipient = new PublicKey(recipientPubkey);
+
+  const paymentRefBytes = paymentRefToBytes(paymentRef);
+  const [escrowPDA] = deriveEscrowPDA(program, payer, paymentRefBytes);
+  const existing = await readEscrowState(program, escrowPDA);
+  if (existing) {
+    return {
+      escrowPDA: escrowPDA.toBase58(),
+      tx: null,
+      serializedTx: null,
+      requiresClientSignature: false,
+      reusedEscrow: true,
+      isReleased: existing.isReleased,
+    };
+  }
+
+  const commitmentBytes = commitmentToBytes(commitment);
+  const tx = await program.methods
+    .initializeEscrow(
+      new anchor.BN(amount),
+      new anchor.BN(threshold),
+      commitmentBytes,
+      paymentRefBytes,
+      recipient
+    )
+    .accounts({
+      escrowState: escrowPDA,
+      payer,
+      systemProgram: anchor.web3.SystemProgram.programId,
+    })
+    .transaction();
+
+  const { blockhash } = await connection.getLatestBlockhash("confirmed");
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = payer;
+
+  return {
+    escrowPDA: escrowPDA.toBase58(),
+    tx: null,
+    serializedTx: tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
+    requiresClientSignature: true,
+    reusedEscrow: false,
+    isReleased: false,
+  };
+}
+
+async function releasePayment({ payerPubkey, escrowPDA, recipientPubkey, proof, publicSignals }) {
   const payer = loadKeypair("PAYER_PRIVATE_KEY");
   const program = getProgram(payer);
-
-  // Always derive the PDA from the backend's own payer keypair — this is the
-  // authoritative source of truth. The payerPubkey from the frontend is only
-  // used as a fallback if the primary PDA has no on-chain data.
-  const candidates = [payer.publicKey];
-  if (payerPubkey) {
-    try { candidates.push(new PublicKey(payerPubkey)); } catch (_) {}
-  }
-
-  let escrowPDA, escrowState;
-  for (const pubkey of candidates) {
-    const [pda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("escrow"), pubkey.toBuffer()],
-      program.programId
-    );
-    try {
-      escrowState = await program.account.escrowState.fetch(pda);
-      escrowPDA = pda;
-      console.log("[Solana] Found escrow PDA:", escrowPDA.toBase58(), "(derived from", pubkey.toBase58() + ")");
-      break;
-    } catch (_) {}
-  }
-
   if (!escrowPDA) {
-    throw new Error(`No on-chain escrow found for payer ${payer.publicKey.toBase58()}`);
+    throw new Error("escrowPDA is required for release in multi-escrow mode");
+  }
+
+  let explicitEscrowPDA;
+  try {
+    explicitEscrowPDA = new PublicKey(escrowPDA);
+  } catch (_) {
+    throw new Error(`Invalid escrow PDA: ${escrowPDA}`);
+  }
+
+  let escrowState;
+  try {
+    escrowState = await program.account.escrowState.fetch(explicitEscrowPDA);
+    console.log("[Solana] Found escrow PDA:", explicitEscrowPDA.toBase58(), "(explicit request)");
+  } catch (_) {
+    throw new Error(`Escrow PDA not found on-chain: ${escrowPDA}`);
   }
 
   // If already released on-chain, return idempotent success — no need to re-submit
   if (escrowState.isReleased) {
     console.log("[Solana] Escrow already released on-chain — returning idempotent success");
-    return { sig: null, alreadyReleased: true };
+    return { sig: null, alreadyReleased: true, requiresClientSignature: false, serializedTx: null };
   }
 
   const storedRecipient = escrowState.recipient.toBase58();
+  const requestedRecipient = recipientPubkey || storedRecipient;
 
-  const payerKp    = payer;
-  const recipientKp = loadKeypair("RECIPIENT_PRIVATE_KEY");
-
-  // Pick whichever of our two keypairs matches the stored recipient
-  const recipientSigner =
-    storedRecipient === payerKp.publicKey.toBase58()    ? payerKp :
-    storedRecipient === recipientKp.publicKey.toBase58() ? recipientKp :
-    (() => { throw new Error(`Stored recipient ${storedRecipient} not in known keypairs`); })();
+  if (requestedRecipient !== storedRecipient) {
+    throw new Error(
+      `Escrow recipient mismatch. On-chain recipient is ${storedRecipient}, requested recipient is ${requestedRecipient}.`
+    );
+  }
 
   console.log("[Solana] Stored recipient:", storedRecipient);
-  console.log("[Solana] Using signer    :", recipientSigner.publicKey.toBase58());
+  console.log("[Solana] Requested recipient:", requestedRecipient);
+  console.log("[Solana] Client wallet must sign release for:", storedRecipient);
 
   // Build the instruction and set fee payer = payer (has SOL)
   const ix = await program.methods
     .verifyAndRelease()
     .accounts({
-      escrowState: escrowPDA,
-      recipient: recipientSigner.publicKey,
+      escrowState: explicitEscrowPDA,
+      recipient: new PublicKey(storedRecipient),
     })
     .instruction();
 
@@ -123,14 +208,16 @@ async function releasePayment({ payerPubkey, proof, publicSignals }) {
   const tx = new Transaction({ feePayer: payer.publicKey, recentBlockhash: blockhash });
   tx.add(ix);
 
-  const signers = recipientSigner === payer ? [payer] : [payer, recipientSigner];
-  tx.sign(...signers);
+  // Backend signs only as fee payer; the recipient wallet must add the final signature in the UI.
+  tx.partialSign(payer);
 
-  const sig = await sendAndConfirmTransaction(connection, tx, signers, {
-    commitment: "confirmed",
-  });
-
-  return { sig, alreadyReleased: false };
+  return {
+    sig: null,
+    alreadyReleased: false,
+    requiresClientSignature: true,
+    expectedRecipient: storedRecipient,
+    serializedTx: tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString("base64"),
+  };
 }
 
-module.exports = { initializeEscrow, releasePayment };
+module.exports = { initializeEscrow, buildInitializeEscrowTx, releasePayment };

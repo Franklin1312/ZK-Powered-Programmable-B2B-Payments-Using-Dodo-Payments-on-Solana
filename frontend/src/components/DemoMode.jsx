@@ -16,6 +16,8 @@ export default function DemoMode({ onFill, demoState }) {
       threshold: 9900,
       commitment: demoState?.commitment || "",
       payerPubkey: demoState?.payerPubkey || "",
+      escrowPDA: demoState?.escrowPDA || "",
+      recipientPubkey: demoState?.recipientPubkey || "",
     },
   };
 

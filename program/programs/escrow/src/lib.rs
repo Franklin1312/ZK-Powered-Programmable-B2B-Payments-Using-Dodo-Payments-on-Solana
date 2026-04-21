@@ -11,6 +11,7 @@ pub mod escrow {
         amount: u64,
         threshold: u64,
         commitment: [u8; 32],
+        payment_ref: [u8; 32],
         recipient: Pubkey,
     ) -> Result<()> {
         let e = &mut ctx.accounts.escrow_state;
@@ -19,6 +20,7 @@ pub mod escrow {
         e.amount = amount;
         e.threshold = threshold;
         e.commitment = commitment;
+        e.payment_ref = payment_ref;
         e.is_released = false;
         e.bump = ctx.bumps.escrow_state;
         msg!("Escrow initialized: {} lamports locked", amount);
@@ -48,16 +50,18 @@ pub struct EscrowState {
     pub amount: u64,
     pub threshold: u64,
     pub commitment: [u8; 32],
+    pub payment_ref: [u8; 32],
     pub is_released: bool,
     pub bump: u8,
 }
 
 #[derive(Accounts)]
+#[instruction(amount: u64, threshold: u64, commitment: [u8; 32], payment_ref: [u8; 32], recipient: Pubkey)]
 pub struct InitializeEscrow<'info> {
     #[account(
         init, payer = payer,
-        space = 8 + 32 + 32 + 8 + 8 + 32 + 1 + 1,
-        seeds = [b"escrow", payer.key().as_ref()], bump
+        space = 8 + 32 + 32 + 8 + 8 + 32 + 32 + 1 + 1,
+        seeds = [b"escrow", payer.key().as_ref(), payment_ref.as_ref()], bump
     )]
     pub escrow_state: Account<'info, EscrowState>,
     #[account(mut)]
@@ -69,7 +73,7 @@ pub struct InitializeEscrow<'info> {
 pub struct VerifyAndRelease<'info> {
     #[account(
         mut,
-        seeds = [b"escrow", escrow_state.payer.as_ref()],
+        seeds = [b"escrow", escrow_state.payer.as_ref(), escrow_state.payment_ref.as_ref()],
         bump = escrow_state.bump
     )]
     pub escrow_state: Account<'info, EscrowState>,

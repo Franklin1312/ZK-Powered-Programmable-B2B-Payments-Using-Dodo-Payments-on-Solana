@@ -1,20 +1,70 @@
 import { useState, useEffect } from "react";
 import { generateProof, releasePayment } from "../utils/api";
+import { Connection, Transaction } from "@solana/web3.js";
 import TxTimeline from "../components/TxTimeline";
 import DemoMode   from "../components/DemoMode";
+import { getPhantomProvider } from "../utils/wallet";
+
+function base64ToBytes(base64) {
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+async function signAndSendWithPhantom(serializedTx, expectedRecipient) {
+  const provider = getPhantomProvider();
+  if (!provider?.isPhantom) {
+    throw new Error("Phantom wallet not connected");
+  }
+
+  const connectedRecipient = provider.publicKey?.toBase58?.();
+  if (expectedRecipient && connectedRecipient !== expectedRecipient) {
+    throw new Error(`Connected wallet ${connectedRecipient || "unknown"} does not match escrow recipient ${expectedRecipient}.`);
+  }
+
+  const tx = Transaction.from(base64ToBytes(serializedTx));
+  const signed = await provider.signAndSendTransaction(tx);
+  const signature = typeof signed === "string" ? signed : signed?.signature;
+  if (!signature) throw new Error("Failed to receive transaction signature from wallet");
+
+  const rpc = import.meta.env.VITE_SOLANA_RPC || "https://api.testnet.solana.com";
+  const conn = new Connection(rpc, "confirmed");
+  await conn.confirmTransaction(signature, "confirmed");
+  return signature;
+}
 
 const STEP_LABELS = ["Enter credentials", "Generate ZK proof", "Release payment"];
 
 export default function RecipientDashboard({ escrowData, demoState, addEvent, updateLastEvent, txEvents }) {
   const [form, setForm] = useState({
     privateValue: 9950, salt: 12345,
-    threshold: 9900, commitment: "", payerPubkey: "",
+    threshold: 9900, commitment: "", payerPubkey: "", recipientPubkey: "", escrowPDA: "",
   });
+  const [connectedWallet, setConnectedWallet] = useState("");
   const [proof,   setProof]   = useState(null);
   const [tx,      setTx]      = useState(null);
   const [step,    setStep]    = useState(0);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
+
+  useEffect(() => {
+    const provider = getPhantomProvider();
+    if (!provider?.isPhantom) return;
+
+    const refreshWallet = () => setConnectedWallet(provider.publicKey?.toBase58?.() || "");
+    const handleConnect = (pubkey) => setConnectedWallet(pubkey?.toBase58?.() || "");
+    const handleDisconnect = () => setConnectedWallet("");
+
+    refreshWallet();
+    provider.on("connect", handleConnect);
+    provider.on("disconnect", handleDisconnect);
+
+    return () => {
+      provider.off("connect", handleConnect);
+      provider.off("disconnect", handleDisconnect);
+    };
+  }, []);
 
   useEffect(() => {
     if (escrowData) {
@@ -23,9 +73,15 @@ export default function RecipientDashboard({ escrowData, demoState, addEvent, up
         threshold:   escrowData.threshold   || f.threshold,
         commitment:  escrowData.commitment  || f.commitment,
         payerPubkey: escrowData.payerPubkey || f.payerPubkey,
+        recipientPubkey: escrowData.recipientPubkey || f.recipientPubkey,
+        escrowPDA:   escrowData.escrowPDA   || f.escrowPDA,
       }));
     }
   }, [escrowData]);
+
+  const walletMismatch = Boolean(
+    connectedWallet && form.recipientPubkey && connectedWallet !== form.recipientPubkey
+  );
 
   const handle = k => e => setForm({ ...form, [k]: e.target.value });
   const fill   = vals  => setForm(f => ({ ...f, ...vals }));
@@ -50,16 +106,30 @@ export default function RecipientDashboard({ escrowData, demoState, addEvent, up
     setLoading(true); setError(null);
     addEvent("Solana · verifyAndRelease()", "Submitting proof + instruction...", "pending");
     try {
+      if (!form.escrowPDA) {
+        throw new Error("Escrow PDA is required. Create/select a payment first so claim targets the correct escrow.");
+      }
+
       const res = await releasePayment({
         proof: proof.proof,
         publicSignals: proof.publicSignals,
         payerPubkey: form.payerPubkey,
+        escrowPDA: form.escrowPDA,
+        recipientPubkey: form.recipientPubkey,
       });
-      const { tx: txSig, alreadyReleased, message } = res.data;
-      const txLabel = txSig ? `Tx: ${txSig.slice(0, 20)}...` : "Escrow already settled on-chain";
+      const { tx: txSig, alreadyReleased, message, requiresClientSignature, serializedTx } = res.data;
+      let finalTxSig = txSig;
+
+      if (requiresClientSignature && serializedTx) {
+        addEvent("Phantom wallet", "Awaiting signature to release payment...", "pending");
+        finalTxSig = await signAndSendWithPhantom(serializedTx, form.recipientPubkey);
+        updateLastEvent("done", `Signed & broadcast · ${finalTxSig.slice(0, 20)}...`);
+      }
+
+      const txLabel = finalTxSig ? `Tx: ${finalTxSig.slice(0, 20)}...` : "Escrow already settled on-chain";
       updateLastEvent("done", txLabel);
       addEvent(alreadyReleased ? "Escrow already settled" : "Payment released!", message, "done");
-      setTx(txSig || "already-released");
+      setTx(finalTxSig || "already-released");
       setStep(3);
     } catch (e) {
       updateLastEvent("error", e.response?.data?.error || e.message);
@@ -122,6 +192,28 @@ export default function RecipientDashboard({ escrowData, demoState, addEvent, up
           </Field>
         </div>
 
+        <Field label="Recipient wallet address" hint="Recipient identity stored in escrow">
+          <input
+            className="field-input field-mono"
+            value={form.recipientPubkey}
+            onChange={handle("recipientPubkey")}
+            placeholder="Recipient public key from escrow..."
+          />
+        </Field>
+
+        {connectedWallet && (
+          <div className={`alert ${walletMismatch ? "alert-error" : "alert-success"}`} style={{ marginBottom: 16 }}>
+            <p className="alert-title" style={{ marginBottom: 4 }}>
+              {walletMismatch ? "Connected wallet does not match recipient" : "Connected wallet matches recipient"}
+            </p>
+            <p style={{ fontSize: 12, margin: 0, color: walletMismatch ? "#9f1239" : "#065f46" }}>
+              {walletMismatch
+                ? `Phantom is connected to ${connectedWallet}, but the escrow recipient is ${form.recipientPubkey}. Switch wallets before releasing.`
+                : `Phantom wallet ${connectedWallet} is ready to sign the release.`}
+            </p>
+          </div>
+        )}
+
         <Field label="Commitment hash (from payer)" hint="Poseidon hash stored in escrow — public">
           <input className="field-input field-mono" value={form.commitment}
             onChange={handle("commitment")} placeholder="Paste commitment hash..." disabled={step > 0} />
@@ -158,7 +250,7 @@ export default function RecipientDashboard({ escrowData, demoState, addEvent, up
               <p className="proof-mono">public: {JSON.stringify(proof.publicSignals).slice(0,60)}...</p>
             </div>
             {step === 2 && (
-              <button className="btn btn-success" onClick={doRelease} disabled={loading}>
+              <button className="btn btn-success" onClick={doRelease} disabled={loading || walletMismatch}>
                 {loading
                   ? <><span className="spinner" /> Submitting to Solana...</>
                   : "Submit Proof & Release Payment →"}

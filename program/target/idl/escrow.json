@@ -39,6 +39,10 @@
               {
                 "kind": "account",
                 "path": "payer"
+              },
+              {
+                "kind": "arg",
+                "path": "payment_ref"
               }
             ]
           }
@@ -64,6 +68,15 @@
         },
         {
           "name": "commitment",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "payment_ref",
           "type": {
             "array": [
               "u8",
@@ -109,6 +122,11 @@
               {
                 "kind": "account",
                 "path": "escrow_state.payer",
+                "account": "EscrowState"
+              },
+              {
+                "kind": "account",
+                "path": "escrow_state.payment_ref",
                 "account": "EscrowState"
               }
             ]
@@ -188,6 +206,15 @@
           },
           {
             "name": "commitment",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "payment_ref",
             "type": {
               "array": [
                 "u8",

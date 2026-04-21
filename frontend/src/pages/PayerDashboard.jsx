@@ -1,9 +1,35 @@
 import { useState, useEffect } from "react";
 import { createPayment } from "../utils/api";
+import { Connection, Transaction } from "@solana/web3.js";
 import TxTimeline from "../components/TxTimeline";
 import DemoMode   from "../components/DemoMode";
+import { getPhantomProvider } from "../utils/wallet";
 
-export default function PayerDashboard({ onEscrowCreated, demoState, addEvent, updateLastEvent, txEvents }) {
+function base64ToBytes(base64) {
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+async function signAndSendWithPhantom(serializedTx) {
+  const provider = getPhantomProvider();
+  if (!provider?.isPhantom) {
+    throw new Error("Phantom wallet not connected");
+  }
+
+  const tx = Transaction.from(base64ToBytes(serializedTx));
+  const signed = await provider.signAndSendTransaction(tx);
+  const signature = typeof signed === "string" ? signed : signed?.signature;
+  if (!signature) throw new Error("Failed to receive transaction signature from wallet");
+
+  const rpc = import.meta.env.VITE_SOLANA_RPC || "https://api.testnet.solana.com";
+  const conn = new Connection(rpc, "confirmed");
+  await conn.confirmTransaction(signature, "confirmed");
+  return signature;
+}
+
+export default function PayerDashboard({ onEscrowCreated, demoState, connectedPayer, addEvent, updateLastEvent, txEvents }) {
   const [form, setForm] = useState({
     amount: 10, threshold: 9900,
     recipientPubkey: "", privateValue: 9950, salt: 12345,
@@ -33,12 +59,46 @@ export default function PayerDashboard({ onEscrowCreated, demoState, addEvent, u
       updateLastEvent("done", "Commitment hash generated");
 
       addEvent("Solana · initializeEscrow()", "Locking USDC in PDA...", "pending");
-      const res = await createPayment(form);
-      updateLastEvent("done", `PDA: ${res.data.escrowPDA?.slice(0, 20)}...`);
-      addEvent("Escrow live on devnet", res.data.tx?.slice(0, 20) + "...", "done");
+      const payload = {
+        ...form,
+        useWalletSigner: Boolean(connectedPayer),
+        ...(connectedPayer ? { payerPubkey: connectedPayer } : {}),
+      };
 
-      setResult(res.data);
-      onEscrowCreated && onEscrowCreated({ ...res.data, threshold: form.threshold });
+      const res = await createPayment(payload);
+
+      let txSig = res.data.tx;
+      if (res.data.requiresClientSignature && res.data.serializedTx) {
+        addEvent("Phantom wallet", "Awaiting signature for escrow initialization...", "pending");
+        txSig = await signAndSendWithPhantom(res.data.serializedTx);
+        updateLastEvent("done", `Signed & broadcast · ${txSig.slice(0, 20)}...`);
+      }
+
+      updateLastEvent("done", `PDA: ${res.data.escrowPDA?.slice(0, 20)}...`);
+
+      const txPreview = txSig
+        ? `${txSig.slice(0, 20)}...`
+        : "No initialize tx (existing escrow PDA reused)";
+      addEvent("Escrow live on testnet", txPreview, "done");
+
+      if (res.data.reusedEscrow) {
+        addEvent(
+          "Escrow PDA reused",
+          res.data.isReleased
+            ? "This escrow is already settled on-chain. Use a different payer for a fresh escrow."
+            : "Escrow account already existed for this payer; parameters were not re-initialized.",
+          "done"
+        );
+      }
+
+      const normalized = { ...res.data, tx: txSig };
+      setResult(normalized);
+      onEscrowCreated && onEscrowCreated({
+        ...normalized,
+        threshold: form.threshold,
+        payerPubkey: connectedPayer || normalized.payerPubkeyUsed || normalized.payerPubkey,
+        recipientPubkey: normalized.recipientPubkeyUsed || form.recipientPubkey,
+      });
     } catch (e) {
       updateLastEvent("error", e.response?.data?.error || e.message);
       setError(e.response?.data?.error || e.message);
@@ -53,6 +113,11 @@ export default function PayerDashboard({ onEscrowCreated, demoState, addEvent, u
         <div className="card-header">
           <h2 className="card-title">Create Escrow Payment</h2>
           <p className="card-sub">Lock USDC on Solana with a ZK-verifiable release condition</p>
+          <p style={{ fontSize: 11, color: "var(--gray-400)", marginTop: 8, marginBottom: 0 }}>
+            {connectedPayer
+              ? `Signer mode: Phantom wallet (${connectedPayer.slice(0, 4)}...${connectedPayer.slice(-4)})`
+              : "Signer mode: Backend demo key (.env fallback)"}
+          </p>
         </div>
 
         <DemoMode onFill={fill} demoState={demoState} />
@@ -66,7 +131,7 @@ export default function PayerDashboard({ onEscrowCreated, demoState, addEvent, u
           </Field>
         </div>
 
-        <Field label="Recipient wallet address" hint="Solana devnet public key">
+        <Field label="Recipient wallet address" hint="Solana testnet public key">
           <input className="field-input field-mono" value={form.recipientPubkey}
             onChange={handle("recipientPubkey")} placeholder="Paste recipient public key..." />
         </Field>
@@ -104,14 +169,27 @@ export default function PayerDashboard({ onEscrowCreated, demoState, addEvent, u
           <div className="card">
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
               <h3 style={{ fontSize:15, fontWeight:600 }}>Escrow created</h3>
-              <span className="tag tag-green">Live on devnet</span>
+              <span className="tag tag-green">Live on testnet</span>
             </div>
             <div className="info-grid">
               <InfoTile label="Amount locked"  value={`${form.amount} USDC`} />
               <InfoTile label="SLA threshold"  value={`${(form.threshold/100).toFixed(2)}%`} />
             </div>
             <InfoRow label="Escrow PDA"  value={result.escrowPDA} />
-            <InfoRow label="Transaction" value={result.tx} />
+            <InfoRow
+              label="Transaction"
+              value={result.tx || "N/A (existing escrow PDA reused)"}
+            />
+            {result.reusedEscrow && (
+              <div className="alert alert-error" style={{ marginTop: 12 }}>
+                <p className="alert-title" style={{ marginBottom: 4 }}>Escrow already exists for this payer</p>
+                <p style={{ fontSize: 12, color: "#9f1239", margin: 0 }}>
+                  {result.isReleased
+                    ? "Existing escrow is already released. Create from a different payer wallet to get a new escrow PDA."
+                    : "Recipient/amount updates do not create a new escrow while using the same payer seed."}
+                </p>
+              </div>
+            )}
             {result.checkoutUrl && (
             <a href={result.checkoutUrl} target="_blank" rel="noreferrer" className="alert-link">
               Complete payment via Dodo →
@@ -122,7 +200,7 @@ export default function PayerDashboard({ onEscrowCreated, demoState, addEvent, u
                 Running in simulation mode — set DODO_API_KEY for live payments
               </p>
             )}
-            <InfoRow label="Commitment"  value={result.commitment?.slice(0,28) + "..."} />
+            <InfoRow label="Commitment"  value={result.commitment} />
             <a className="alert-link" style={{ marginTop:14 }}
               href={`https://explorer.solana.com/tx/${result.tx}?cluster=testnet`}
               target="_blank" rel="noreferrer">
