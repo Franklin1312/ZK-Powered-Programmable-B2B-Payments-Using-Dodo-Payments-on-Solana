@@ -1,4 +1,5 @@
 require("dotenv").config();
+const crypto = require("crypto");
 const { computeCommitment } = require("./src/services/zk");
 const { initializeEscrow }  = require("./src/services/solana");
 const { Keypair, PublicKey } = require("@solana/web3.js");
@@ -12,6 +13,7 @@ async function seed() {
   const privateValue = 9950;
   const salt         = 12345;
   const threshold    = 9900;
+  const paymentRef   = `demo-seed-${Date.now()}`;
 
   const commitment = await computeCommitment(privateValue, salt);
   console.log("Commitment:", commitment);
@@ -25,8 +27,9 @@ async function seed() {
   );
 
   // Derive the PDA — same formula used in the on-chain program
+  const paymentRefBytes = crypto.createHash("sha256").update(paymentRef).digest();
   const [escrowPDA] = PublicKey.findProgramAddressSync(
-    [Buffer.from("escrow"), payerKeypair.publicKey.toBuffer()],
+    [Buffer.from("escrow"), payerKeypair.publicKey.toBuffer(), paymentRefBytes],
     PROGRAM_ID
   );
 
@@ -38,6 +41,7 @@ async function seed() {
       amount: 10 * 1_000_000,
       threshold,
       commitment,
+      paymentRef,
     });
     tx = result.tx;
     console.log("\n Demo escrow created!");
@@ -57,6 +61,7 @@ async function seed() {
     escrowPDA: escrowPDA.toBase58(),
     tx,
     commitment,
+    paymentRef,
     threshold,
     privateValue,
     salt,
