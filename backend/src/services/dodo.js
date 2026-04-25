@@ -22,12 +22,23 @@ db.exec(`
   )
 `);
 
-// ── Dodo Payments REST API (Test Mode) ─────────────────────
-const DODO_BASE = "https://test.dodopayments.com";
-const headers = () => ({
-  Authorization: `Bearer ${process.env.DODO_PAYMENTS_API_KEY}`,
-  "Content-Type": "application/json",
-});
+// ── Dodo Payments REST API ──────────────────────────────────
+const DODO_BASE = process.env.DODO_MODE === "live" 
+  ? "https://live.dodopayments.com" 
+  : "https://test.dodopayments.com";
+
+const headers = () => {
+  const key = process.env.DODO_PAYMENTS_API_KEY || "";
+  if (!key) console.warn("[Dodo] ⚠ DODO_PAYMENTS_API_KEY is missing!");
+  
+  // Debug (safe): log only the first 5 chars to verify prefix
+  console.log(`[Dodo] Using API key starting with: ${key.slice(0, 5)}...`);
+  
+  return {
+    Authorization: `Bearer ${key.trim()}`,
+    "Content-Type": "application/json",
+  };
+};
 
 function now() { return new Date().toISOString(); }
 function genId(prefix) {
