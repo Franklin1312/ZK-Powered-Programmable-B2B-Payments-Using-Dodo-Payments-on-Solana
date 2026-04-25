@@ -1,34 +1,61 @@
-import { useState, useEffect } from "react";
-import { createPayment } from "../utils/api";
-import { Connection, Transaction } from "@solana/web3.js";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { DodoPayments } from "dodopayments-checkout";
+import { createPayment, getPaymentStatus } from "../utils/api";
 import TxTimeline from "../components/TxTimeline";
 import DemoMode   from "../components/DemoMode";
-import { getPhantomProvider } from "../utils/wallet";
 
-function base64ToBytes(base64) {
-  const raw = atob(base64);
-  const out = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i);
-  return out;
+// ── Poll for escrow creation (after webhook fires) ──────────
+function usePaymentPoller(onConfirmed) {
+  const intervalRef = useRef(null);
+  const callbackRef = useRef(onConfirmed);
+  const [polling, setPolling] = useState(false);
+
+  // Keep callback ref fresh so we never close over stale state
+  useEffect(() => { callbackRef.current = onConfirmed; }, [onConfirmed]);
+
+  const start = useCallback((id) => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    setPolling(true);
+    let attempts = 0;
+    const MAX = 60; // stop after 2 minutes
+
+    intervalRef.current = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await getPaymentStatus(id);
+        console.log(`[Poller] attempt ${attempts} — status: ${res.data.status}`);
+        if (res.data.status === "confirmed") {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          setPolling(false);
+          callbackRef.current(res.data);
+        } else if (res.data.status === "failed") {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          setPolling(false);
+          callbackRef.current(null);
+        } else if (attempts >= MAX) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+          setPolling(false);
+          callbackRef.current(null);
+        }
+      } catch (e) {
+        console.warn("[Poller] error:", e.message);
+      }
+    }, 2000);
+  }, []); // stable — never recreated
+
+  const stop = useCallback(() => {
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    setPolling(false);
+  }, []);
+
+  // Only clear on actual unmount
+  useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
+
+  return { polling, start, stop };
 }
-
-async function signAndSendWithPhantom(serializedTx) {
-  const provider = getPhantomProvider();
-  if (!provider?.isPhantom) {
-    throw new Error("Phantom wallet not connected");
-  }
-
-  const tx = Transaction.from(base64ToBytes(serializedTx));
-  const signed = await provider.signAndSendTransaction(tx);
-  const signature = typeof signed === "string" ? signed : signed?.signature;
-  if (!signature) throw new Error("Failed to receive transaction signature from wallet");
-
-  const rpc = import.meta.env.VITE_SOLANA_RPC || "https://api.testnet.solana.com";
-  const conn = new Connection(rpc, "confirmed");
-  await conn.confirmTransaction(signature, "confirmed");
-  return signature;
-}
-
 export default function PayerDashboard({ onEscrowCreated, demoState, connectedPayer, addEvent, updateLastEvent, txEvents }) {
   const [form, setForm] = useState({
     amount: 10, threshold: 9900,
@@ -37,6 +64,71 @@ export default function PayerDashboard({ onEscrowCreated, demoState, connectedPa
   const [result,  setResult]  = useState(null);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
+  const [awaitingPayment, setAwaitingPayment] = useState(false);
+  const localIdRef = useRef(null);
+
+  const poller = usePaymentPoller((data) => {
+    if (data) {
+      updateLastEvent("done", `PDA: ${data.escrowPDA?.slice(0, 20)}...`);
+      addEvent("Escrow live on testnet", data.escrowTx
+        ? `${data.escrowTx.slice(0, 20)}...`
+        : "Escrow created via webhook", "done");
+
+      setResult(data);
+      setAwaitingPayment(false);
+      setLoading(false);
+      onEscrowCreated && onEscrowCreated({
+        ...data,
+        threshold: form.threshold,
+        payerPubkey: connectedPayer || data.payerPubkey,
+        recipientPubkey: data.recipientPubkey || form.recipientPubkey,
+      });
+    } else {
+      updateLastEvent("error", "Payment failed or was cancelled");
+      setError("Payment failed. Please try again.");
+      setAwaitingPayment(false);
+      setLoading(false);
+    }
+  });
+
+  // ── Resume after Dodo redirect ───────────────────────────
+  // When Dodo redirects back with ?payment=<localId>&status=success
+  // we skip straight to polling — no need to re-open the overlay.
+  useEffect(() => {
+    const params   = new URLSearchParams(window.location.search);
+    const localId  = params.get("payment");
+    const status   = params.get("status");
+
+    if (localId && status === "success") {
+      // Removed history.replaceState because React Strict Mode runs useEffect twice.
+      // If we clean the URL on the first run, the second run sees nothing and the poller never starts!
+
+      localIdRef.current = localId;
+      setAwaitingPayment(true);
+      setLoading(true);
+      addEvent("Dodo Checkout", "Payment completed — redirected back", "done");
+      addEvent("Solana · Escrow", "Waiting for webhook & escrow creation...", "pending");
+      poller.start(localId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // Initialize Dodo Payments after component mounts
+    DodoPayments.Initialize({
+      mode: "test",
+      displayType: "overlay",
+      onEvent: (event) => {
+        console.log("[Dodo Overlay Event]", event);
+        if (event.event_type === "payment.success" || event.event_type === "checkout.success" || event.event_type === "payment.succeeded") {
+          // Automatically close the overlay when payment succeeds
+          // so the user sees the React UI (Escrow details) immediately!
+          console.log("Payment successful, closing overlay...");
+          DodoPayments.Checkout.close();
+        }
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (demoState?.recipientPubkey) {
@@ -48,62 +140,41 @@ export default function PayerDashboard({ onEscrowCreated, demoState, connectedPa
   const fill   = vals  => setForm(f => ({ ...f, ...vals }));
 
   const submit = async () => {
-    setLoading(true); setError(null);
-    addEvent("Dodo Payments", "Creating fiat payment intent...", "pending");
+    setLoading(true); setError(null); setResult(null);
+    addEvent("Dodo Payments", "Creating checkout session...", "pending");
+
     try {
-      await new Promise(r => setTimeout(r, 600));
-      updateLastEvent("done", "Payment confirmed · USDC conversion complete");
-
-      addEvent("ZK commitment", "Poseidon(privateValue, salt) computing...", "pending");
-      await new Promise(r => setTimeout(r, 400));
-      updateLastEvent("done", "Commitment hash generated");
-
-      addEvent("Solana · initializeEscrow()", "Locking USDC in PDA...", "pending");
+      // 1. Backend creates Dodo checkout session
       const payload = {
         ...form,
-        useWalletSigner: Boolean(connectedPayer),
-        ...(connectedPayer ? { payerPubkey: connectedPayer } : {}),
+        payerPubkey: connectedPayer || "",
+        customerEmail: "payer@test.com",
       };
-
       const res = await createPayment(payload);
+      const { checkoutUrl, localId, commitment } = res.data;
 
-      let txSig = res.data.tx;
-      if (res.data.requiresClientSignature && res.data.serializedTx) {
-        addEvent("Phantom wallet", "Awaiting signature for escrow initialization...", "pending");
-        txSig = await signAndSendWithPhantom(res.data.serializedTx);
-        updateLastEvent("done", `Signed & broadcast · ${txSig.slice(0, 20)}...`);
-      }
+      localIdRef.current = localId;
+      updateLastEvent("done", "Checkout session created");
 
-      updateLastEvent("done", `PDA: ${res.data.escrowPDA?.slice(0, 20)}...`);
+      addEvent("ZK commitment", `Poseidon hash: ${commitment?.slice(0, 20)}...`, "done");
 
-      const txPreview = txSig
-        ? `${txSig.slice(0, 20)}...`
-        : "No initialize tx (existing escrow PDA reused)";
-      addEvent("Escrow live on testnet", txPreview, "done");
+      // 2. Open Dodo overlay checkout
+      addEvent("Dodo Checkout", "Waiting for payment in overlay...", "pending");
+      setAwaitingPayment(true);
 
-      if (res.data.reusedEscrow) {
-        addEvent(
-          "Escrow PDA reused",
-          res.data.isReleased
-            ? "This escrow is already settled on-chain. Use a different payer for a fresh escrow."
-            : "Escrow account already existed for this payer; parameters were not re-initialized.",
-          "done"
-        );
-      }
+      DodoPayments.Checkout.open({ checkoutUrl });
 
-      const normalized = { ...res.data, tx: txSig };
-      setResult(normalized);
-      onEscrowCreated && onEscrowCreated({
-        ...normalized,
-        threshold: form.threshold,
-        payerPubkey: connectedPayer || normalized.payerPubkeyUsed || normalized.payerPubkey,
-        recipientPubkey: normalized.recipientPubkeyUsed || form.recipientPubkey,
-      });
+      // 3. Start polling for webhook confirmation
+      // The overlay will close when user pays or cancels.
+      // We poll regardless — the webhook is the source of truth.
+      addEvent("Solana · Escrow", "Waiting for payment confirmation & escrow creation...", "pending");
+      poller.start(localId);
+
     } catch (e) {
       updateLastEvent("error", e.response?.data?.error || e.message);
       setError(e.response?.data?.error || e.message);
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -112,7 +183,7 @@ export default function PayerDashboard({ onEscrowCreated, demoState, connectedPa
       <div className="card">
         <div className="card-header">
           <h2 className="card-title">Create Escrow Payment</h2>
-          <p className="card-sub">Lock USDC on Solana with a ZK-verifiable release condition</p>
+          <p className="card-sub">Pay via Dodo Payments → USDC locked on Solana with ZK-verifiable release</p>
           <p style={{ fontSize: 11, color: "var(--gray-400)", marginTop: 8, marginBottom: 0 }}>
             {connectedPayer
               ? `Signer mode: Phantom wallet (${connectedPayer.slice(0, 4)}...${connectedPayer.slice(-4)})`
@@ -123,7 +194,7 @@ export default function PayerDashboard({ onEscrowCreated, demoState, connectedPa
         <DemoMode onFill={fill} demoState={demoState} />
 
         <div className="grid-2">
-          <Field label="Amount (USDC)" hint="Minimum 1 USDC">
+          <Field label="Amount (USD)" hint="Pay What You Want — minimum $1">
             <input className="field-input" type="number" value={form.amount} onChange={handle("amount")} />
           </Field>
           <Field label="SLA threshold" hint="9900 = 99.00% uptime">
@@ -150,9 +221,24 @@ export default function PayerDashboard({ onEscrowCreated, demoState, connectedPa
           </Field>
         </div>
 
-        <button className="btn btn-primary" onClick={submit} disabled={loading} style={{ marginTop:8 }}>
-          {loading ? <><span className="spinner" /> Locking funds on Solana...</> : "Lock Funds in Escrow →"}
+        <button className="btn btn-primary" onClick={submit}
+          disabled={loading || awaitingPayment} style={{ marginTop:8 }}>
+          {loading
+            ? awaitingPayment
+              ? <><span className="spinner" /> Waiting for payment & escrow...</>
+              : <><span className="spinner" /> Creating checkout...</>
+            : "Pay & Lock Funds →"}
         </button>
+
+        {awaitingPayment && (
+          <div className="alert" style={{ marginTop:16, background:"#eff6ff", border:"1px solid #bfdbfe" }}>
+            <p className="alert-title" style={{ color:"#1d4ed8" }}>Overlay checkout is open</p>
+            <p style={{ fontSize:12, color:"#1e40af", margin:0 }}>
+              Complete the payment using test card <strong>4242 4242 4242 4242</strong> (exp: 06/32, CVV: 123).
+              The escrow will be created automatically after payment.
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="alert alert-error" style={{ marginTop:16 }}>
@@ -176,42 +262,25 @@ export default function PayerDashboard({ onEscrowCreated, demoState, connectedPa
               <InfoTile label="SLA threshold"  value={`${(form.threshold/100).toFixed(2)}%`} />
             </div>
             <InfoRow label="Escrow PDA"  value={result.escrowPDA} />
-            <InfoRow
-              label="Transaction"
-              value={result.tx || "N/A (existing escrow PDA reused)"}
-            />
-            {result.reusedEscrow && (
-              <div className="alert alert-error" style={{ marginTop: 12 }}>
-                <p className="alert-title" style={{ marginBottom: 4 }}>Escrow already exists for this payer</p>
-                <p style={{ fontSize: 12, color: "#9f1239", margin: 0 }}>
-                  {result.isReleased
-                    ? "Existing escrow is already released. Create from a different payer wallet to get a new escrow PDA."
-                    : "Recipient/amount updates do not create a new escrow while using the same payer seed."}
-                </p>
-              </div>
-            )}
-            {result.checkoutUrl && (
-            <a href={result.checkoutUrl} target="_blank" rel="noreferrer" className="alert-link">
-              Complete payment via Dodo →
-            </a>
-            )}
-            {result.isSimulated && (
-              <p style={{fontSize:11, color:"var(--amber-600)", marginTop:8}}>
-                Running in simulation mode — set DODO_API_KEY for live payments
-              </p>
-            )}
+            <InfoRow label="Transaction" value={result.escrowTx || "N/A"} />
             <InfoRow label="Commitment"  value={result.commitment} />
-            <a className="alert-link" style={{ marginTop:14 }}
-              href={`https://explorer.solana.com/tx/${result.tx}?cluster=testnet`}
-              target="_blank" rel="noreferrer">
-              View on Solana Explorer →
-            </a>
+            <InfoRow label="Payment ID"  value={result.localId} />
+            <p style={{fontSize:11, color:"var(--green-600)", marginTop:8}}>
+              ✓ Paid via Dodo Payments (test mode) · Escrow locked on Solana testnet
+            </p>
+            {result.escrowTx && (
+              <a className="alert-link" style={{ marginTop:14 }}
+                href={`https://explorer.solana.com/tx/${result.escrowTx}?cluster=testnet`}
+                target="_blank" rel="noreferrer">
+                View on Solana Explorer →
+              </a>
+            )}
           </div>
         ) : (
           <div className="card" style={{ background:"var(--gray-50)",
             border:"1.5px dashed var(--gray-200)", textAlign:"center" }}>
             <p style={{ fontSize:13, color:"var(--gray-300)", padding:"28px 0" }}>
-              Escrow details appear here after locking
+              Escrow details appear here after payment
             </p>
           </div>
         )}
@@ -221,9 +290,9 @@ export default function PayerDashboard({ onEscrowCreated, demoState, connectedPa
             How it works
           </p>
           {[
-            ["1","Dodo Payments converts fiat → USDC"],
+            ["1","You pay via Dodo Payments checkout (fiat → USDC)"],
             ["2","Poseidon(value, salt) stored as commitment hash"],
-            ["3","USDC locked in a Solana PDA escrow"],
+            ["3","Webhook fires → USDC locked in Solana PDA escrow"],
             ["4","Recipient proves condition via ZK — nothing revealed"],
           ].map(([n, text]) => (
             <div key={n} style={{ display:"flex", gap:10, marginBottom:10, alignItems:"flex-start" }}>
@@ -233,6 +302,22 @@ export default function PayerDashboard({ onEscrowCreated, demoState, connectedPa
               <p style={{ fontSize:12, color:"var(--indigo-700)", lineHeight:1.5, margin:0 }}>{text}</p>
             </div>
           ))}
+        </div>
+
+        <div className="card" style={{ background:"#fffbeb", border:"1px solid #fde68a" }}>
+          <p style={{ fontSize:12, fontWeight:600, color:"#92400e", marginBottom:8 }}>
+            Test card details
+          </p>
+          <p style={{ fontSize:11, color:"#78350f", fontFamily:"var(--font-mono)", margin:0, lineHeight:1.8 }}>
+            <strong>India (INR) Test Card:</strong><br/>
+            Card: 4576 2389 1277 1450<br/>
+            Expiry: 06/32 | CVV: 123
+          </p>
+          <p style={{ fontSize:11, color:"#78350f", fontFamily:"var(--font-mono)", margin:0, marginTop:8, lineHeight:1.8 }}>
+            <strong>Global (US) Test Card:</strong><br/>
+            Card: 4242 4242 4242 4242<br/>
+            Expiry: 06/32 | CVV: 123
+          </p>
         </div>
       </div>
     </div>

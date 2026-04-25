@@ -19,7 +19,8 @@ function getApiBase() {
 
 const BASE = getApiBase();
 
-export const createPayment  = (d) => axios.post(`${BASE}/payment/create`, d);
-export const generateProof  = (d) => axios.post(`${BASE}/proof/generate`, d);
-export const releasePayment = (d) => axios.post(`${BASE}/release`, d);
-export const getDemoState   = ()  => axios.get(`${BASE}/demo`);
+export const createPayment     = (d) => axios.post(`${BASE}/payment/create`, d);
+export const getPaymentStatus  = (localId) => axios.get(`${BASE}/payment/status/${localId}`);
+export const generateProof     = (d) => axios.post(`${BASE}/proof/generate`, d);
+export const releasePayment    = (d) => axios.post(`${BASE}/release`, d);
+export const getDemoState      = ()  => axios.get(`${BASE}/demo`);

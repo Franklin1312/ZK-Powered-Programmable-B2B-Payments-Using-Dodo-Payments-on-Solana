@@ -1,14 +1,13 @@
 const express = require("express");
 const router  = express.Router();
-const { Keypair } = require("@solana/web3.js");
 const dodo    = require("../services/dodo");
-const solana  = require("../services/solana");
 const { computeCommitment } = require("../services/zk");
 
 // POST /api/payment/create
-// Creates a Dodo payment intent (mock), confirms it immediately, then
-// initialises the Solana escrow. Shape of response is unchanged from
-// the real implementation so the frontend needs no updates.
+// Creates a Dodo checkout session (real API, test mode).
+// Returns { checkoutUrl, sessionId, localId, commitment }
+// The frontend opens the overlay checkout with the checkoutUrl.
+// Escrow is created later when the webhook fires.
 router.post("/create", async (req, res) => {
   try {
     const {
@@ -18,77 +17,96 @@ router.post("/create", async (req, res) => {
       privateValue,
       salt,
       payerPubkey,
-      useWalletSigner,
+      customerEmail,
     } = req.body;
-
-    const envRecipientPubkey = Keypair
-      .fromSecretKey(Uint8Array.from(JSON.parse(process.env.RECIPIENT_PRIVATE_KEY)))
-      .publicKey
-      .toBase58();
-    const recipientPubkeyUsed = recipientPubkey || envRecipientPubkey;
 
     // 1. Compute ZK commitment off-chain
     const commitment = await computeCommitment(privateValue, salt);
     console.log("[Payment] Commitment:", commitment.slice(0, 20) + "...");
 
-    // 2. Create Dodo payment intent (mock — no HTTP call, immediate)
-    const intent = await dodo.createPaymentIntent({
-      amount,
-      currency:    "USD",
-      recipientId: recipientPubkeyUsed,
-      metadata:    { threshold, commitment, recipientId: recipientPubkeyUsed, privateValue, salt },
+    // 2. Create Dodo checkout session with metadata
+    const session = await dodo.createCheckoutSession({
+      amount: Number(amount),
+      recipientId: recipientPubkey,
+      metadata: {
+        threshold:       String(threshold),
+        commitment,
+        recipientPubkey,
+        privateValue:    String(privateValue),
+        salt:            String(salt),
+        payerPubkey:     payerPubkey || "",
+      },
+      returnUrl: process.env.FRONTEND_URL ||  "http://localhost:5000" || "http://localhost:5173",
+      customerEmail: customerEmail || "payer@test.com",
     });
-
-    // 3. Auto-confirm — in production this would be triggered by the Dodo webhook
-    await dodo.confirmPayment(intent.id);
-
-    // 4. Lock funds on Solana
-    const amountMicros = amount * 1_000_000;
-    const escrowInit = useWalletSigner && payerPubkey
-      ? await solana.buildInitializeEscrowTx({
-          payerPubkey,
-          recipientPubkey: recipientPubkeyUsed,
-          amount: amountMicros,
-          threshold,
-          commitment,
-          paymentRef: intent.id,
-        })
-      : await solana.initializeEscrow({
-          recipientPubkey: recipientPubkeyUsed,
-          amount: amountMicros,
-          threshold,
-          commitment,
-          paymentRef: intent.id,
-        });
-
-    const { escrowPDA, tx, reusedEscrow, isReleased, serializedTx, requiresClientSignature } = escrowInit;
 
     res.json({
       success:     true,
-      paymentId:   intent.id,
-      checkoutUrl: intent.checkoutUrl,  // null in mock
-      isSimulated: true,                // always true in mock mode
-      payerPubkeyUsed: payerPubkey || null,
-      recipientPubkeyUsed,
-      paymentRef: intent.id,
-      escrowPDA,
-      tx,
-      serializedTx: serializedTx || null,
-      requiresClientSignature: Boolean(requiresClientSignature),
-      reusedEscrow,
-      isReleased,
+      checkoutUrl: session.checkoutUrl,
+      sessionId:   session.sessionId,
+      localId:     session.localId,
       commitment,
     });
   } catch (err) {
-    console.error(err);
+    console.error("[Payment] Error:", err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || err.message });
+  }
+});
+
+// GET /api/payment/status/:localId
+// Frontend polls this after checkout completes to check if
+// the webhook has processed and the escrow has been created.
+router.get("/status/:localId", async (req, res) => {
+  try {
+    const localId = req.params.localId;
+    let payment = dodo.getPayment(localId);
+
+    // Fallback to demo-state.json if SQLite row is missing
+    if (!payment) {
+      try {
+        const fs = require("fs");
+        const path = require("path");
+        const demoPath = path.join(__dirname, "../../demo-state.json");
+        if (fs.existsSync(demoPath)) {
+          const demoState = JSON.parse(fs.readFileSync(demoPath, "utf8"));
+          if (demoState.paymentRef === localId && demoState.escrowPDA) {
+            return res.json({
+              localId: demoState.paymentRef,
+              status: "confirmed",
+              escrowPDA: demoState.escrowPDA,
+              escrowTx: null,
+              amount: 10,
+              commitment: demoState.commitment,
+              recipientPubkey: demoState.recipientPubkey,
+              threshold: demoState.threshold,
+            });
+          }
+        }
+      } catch (e) {
+        console.error("Fallback check failed:", e.message);
+      }
+      return res.status(404).json({ error: "Payment not found" });
+    }
+
+    res.json({
+      localId:      payment.id,
+      status:       payment.status,
+      escrowPDA:    payment.escrow_pda || null,
+      escrowTx:     payment.escrow_tx || null,
+      amount:       payment.amount,
+      commitment:   payment.metadata?.commitment || null,
+      recipientPubkey: payment.metadata?.recipientPubkey || payment.recipient_id,
+      threshold:    payment.metadata?.threshold || null,
+    });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/payment/:id — check payment status
+// GET /api/payment/:id — legacy compatibility
 router.get("/:id", async (req, res) => {
   try {
-    const payment = await dodo.getPayment(req.params.id);
+    const payment = dodo.getPayment(req.params.id);
     if (!payment) return res.status(404).json({ error: "Payment not found" });
     res.json(payment);
   } catch (err) {

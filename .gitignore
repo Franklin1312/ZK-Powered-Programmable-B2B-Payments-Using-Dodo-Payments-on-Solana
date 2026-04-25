@@ -98,3 +98,7 @@ test-output.json
 .cache/
 dist-*
 backend/.env
+
+# --------- SQLite Databases ---------
+*.db
+*.db-journal

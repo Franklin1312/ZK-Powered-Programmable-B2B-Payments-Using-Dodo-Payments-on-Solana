@@ -1,24 +1,26 @@
 import { useEffect, useState } from "react";
-import LandingPage        from "./pages/Landingpage";
-import PayerDashboard     from "./pages/PayerDashboard";
+import LandingPage from "./pages/Landingpage";
+import PayerDashboard from "./pages/PayerDashboard";
 import RecipientDashboard from "./pages/RecipientDashboard";
-import StatusChecker      from "./pages/StatusChecker";
-import { getDemoState }   from "./utils/api";
+import StatusChecker from "./pages/StatusChecker";
+import { getDemoState } from "./utils/api";
 import { getPhantomProvider } from "./utils/wallet";
 import "./App.css";
 
 const TABS = [
-  { id: "payer",     label: "Lock Payment",  icon: "⬡" },
+  { id: "payer", label: "Lock Payment", icon: "⬡" },
   { id: "recipient", label: "Claim Payment", icon: "◈" },
-  { id: "status",    label: "Verify Status", icon: "◎" },
+  { id: "status", label: "Verify Status", icon: "◎" },
 ];
 
 export default function App() {
-  const [screen,     setScreen]     = useState("landing");
-  const [role,       setRole]       = useState("payer");
+  const _p = new URLSearchParams(window.location.search);
+  const _isReturn = _p.get("status") === "success" && _p.get("payment");
+  const [screen, setScreen] = useState(_isReturn ? "app" : "landing");
+  const [role, setRole] = useState("payer");
   const [escrowData, setEscrowData] = useState(null);
-  const [demoState,  setDemoState]  = useState(null);
-  const [txEvents,   setTxEvents]   = useState([]);
+  const [demoState, setDemoState] = useState(null);
+  const [txEvents, setTxEvents] = useState([]);
   const [walletPubkey, setWalletPubkey] = useState("");
 
   useEffect(() => {
@@ -31,7 +33,7 @@ export default function App() {
     provider.on("connect", onConnect);
     provider.on("disconnect", onDisconnect);
 
-    provider.connect({ onlyIfTrusted: true }).catch(() => {});
+    provider.connect({ onlyIfTrusted: true }).catch(() => { });
 
     return () => {
       provider.off("connect", onConnect);
@@ -93,52 +95,64 @@ export default function App() {
         </div>
         <div className="header-pills">
           <StatusPill color="#6366f1" dot="#818cf8" label="Solana Testnet" />
-          <StatusPill color="#0891b2" dot="#22d3ee" label="Groth16 ZK"   />
+          <StatusPill color="#0891b2" dot="#22d3ee" label="Groth16 ZK" />
           <StatusPill color="#059669" dot="#34d399" label="Dodo Payments" />
           <button
             onClick={walletPubkey ? disconnectWallet : connectWallet}
-            style={{ marginLeft: 8, background: walletPubkey ? "#ecfdf5" : "#eff6ff",
+            style={{
+              marginLeft: 8, background: walletPubkey ? "#ecfdf5" : "#eff6ff",
               border: `1px solid ${walletPubkey ? "#a7f3d0" : "#bfdbfe"}`,
               color: walletPubkey ? "#065f46" : "#1d4ed8", borderRadius: 20,
               padding: "4px 12px", fontSize: 11, fontWeight: 600, cursor: "pointer",
-              fontFamily: "'DM Mono', monospace", letterSpacing: "0.2px" }}>
+              fontFamily: "'DM Mono', monospace", letterSpacing: "0.2px"
+            }}>
             {walletPubkey ? `Wallet ${walletPubkey.slice(0, 4)}...${walletPubkey.slice(-4)}` : "Connect Phantom"}
           </button>
           <button onClick={async () => {
-              try { const r = await getDemoState(); setDemoState(r.data); }
-              catch { setDemoState({ _demo: true }); }
-            }}
-            style={{ marginLeft: 8, background: "#fffbeb", border: "1px solid #fde68a",
+            try { const r = await getDemoState(); setDemoState(r.data); }
+            catch { setDemoState({ _demo: true }); }
+          }}
+            style={{
+              marginLeft: 8, background: "#fffbeb", border: "1px solid #fde68a",
               color: "#92400e", borderRadius: 20, padding: "4px 12px", fontSize: 11,
               fontWeight: 600, cursor: "pointer", fontFamily: "'DM Mono', monospace",
-              letterSpacing: "0.5px" }}>
+              letterSpacing: "0.5px"
+            }}>
             DEMO
           </button>
         </div>
       </header>
 
       {/* Stats bar */}
-      <div style={{ position:"relative", zIndex:9, background:"#fff",
-        borderBottom:"1px solid #f1f5f9", display:"flex", overflowX:"auto", padding:"0 40px" }}>
+      <div style={{
+        position: "relative", zIndex: 9, background: "#fff",
+        borderBottom: "1px solid #f1f5f9", display: "flex", overflowX: "auto", padding: "0 40px"
+      }}>
         {[
-          ["Network",     "Solana Testnet"],
-          ["ZK System",   "Groth16 · bn128"],
-          ["Circuit",     "threshold.circom"],
-          ["Hash fn",     "Poseidon"],
-          ["Proof size",  "~200 bytes"],
+          ["Network", "Solana Testnet"],
+          ["ZK System", "Groth16 · bn128"],
+          ["Circuit", "threshold.circom"],
+          ["Hash fn", "Poseidon"],
+          ["Proof size", "~200 bytes"],
           ["Verify time", "< 1s on-chain"],
         ].map(([label, value]) => (
-          <div key={label} style={{ display:"flex", flexDirection:"column",
-            padding:"8px 0", marginRight:32, flexShrink:0 }}>
-            <span style={{ fontSize:9, fontWeight:600, color:"#94a3b8",
-              textTransform:"uppercase", letterSpacing:"0.5px" }}>{label}</span>
-            <span style={{ fontSize:12, fontWeight:500, color:"#334155",
-              fontFamily:"'DM Mono', monospace", marginTop:2 }}>{value}</span>
+          <div key={label} style={{
+            display: "flex", flexDirection: "column",
+            padding: "8px 0", marginRight: 32, flexShrink: 0
+          }}>
+            <span style={{
+              fontSize: 9, fontWeight: 600, color: "#94a3b8",
+              textTransform: "uppercase", letterSpacing: "0.5px"
+            }}>{label}</span>
+            <span style={{
+              fontSize: 12, fontWeight: 500, color: "#334155",
+              fontFamily: "'DM Mono', monospace", marginTop: 2
+            }}>{value}</span>
           </div>
         ))}
       </div>
 
-      <nav className="tab-nav" style={{ display:"flex", alignItems:"stretch" }}>
+      <nav className="tab-nav" style={{ display: "flex", alignItems: "stretch" }}>
         <div className="tab-track">
           {TABS.map(tab => (
             <button key={tab.id}
@@ -149,12 +163,14 @@ export default function App() {
             </button>
           ))}
           <div className="tab-indicator"
-            style={{ transform:`translateX(${TABS.findIndex(t=>t.id===role)*100}%)` }} />
+            style={{ transform: `translateX(${TABS.findIndex(t => t.id === role) * 100}%)` }} />
         </div>
         <button onClick={() => setScreen("landing")}
-          style={{ marginLeft:"auto", background:"none", border:"none",
-            color:"var(--gray-400)", fontSize:12, cursor:"pointer",
-            padding:"0 20px", display:"flex", alignItems:"center", gap:4 }}>
+          style={{
+            marginLeft: "auto", background: "none", border: "none",
+            color: "var(--gray-400)", fontSize: 12, cursor: "pointer",
+            padding: "0 20px", display: "flex", alignItems: "center", gap: 4
+          }}>
           ← Home
         </button>
       </nav>
