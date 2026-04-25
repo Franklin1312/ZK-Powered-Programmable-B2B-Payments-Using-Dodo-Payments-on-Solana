@@ -36,7 +36,7 @@ router.post("/create", async (req, res) => {
         salt:            String(salt),
         payerPubkey:     payerPubkey || "",
       },
-      returnUrl: process.env.FRONTEND_URL ||  "http://localhost:5000" || "http://localhost:5173",
+      returnUrl: process.env.FRONTEND_URL,
       customerEmail: customerEmail || "payer@test.com",
     });
 
