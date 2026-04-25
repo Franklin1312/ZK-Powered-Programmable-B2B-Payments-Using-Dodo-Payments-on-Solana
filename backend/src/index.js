@@ -90,7 +90,7 @@ app.post("/webhook/dodo", async (req, res) => {
       const privateValue = metadata.privateValue;
       const salt = metadata.salt || "12345";
       const payerPubkey = metadata.payerPubkey;
-      const amountFromDodo = Number(event.data?.amount || event.data?.total_amount || 0);
+      const amount = Number(event.data?.amount || event.data?.total_amount || 0);
       const dodoPaymentId = event.data?.payment_id || event.data?.id;
 
       if (!recipientPubkey || !threshold) {
@@ -101,7 +101,7 @@ app.post("/webhook/dodo", async (req, res) => {
 
       // Fetch the original requested amount from our database
       const paymentRecord = dodo.getPayment(localId);
-      let finalAmountUsd = paymentRecord ? paymentRecord.amount : (amountFromDodo / 100);
+      let finalAmountUsd = paymentRecord ? paymentRecord.amount : (amount / 100);
 
       const commitment = await zk.computeCommitment(privateValue, salt);
       console.log("[Webhook] Commitment:", commitment.slice(0, 20) + "...");
@@ -128,17 +128,22 @@ app.post("/webhook/dodo", async (req, res) => {
 
       const fs = require("fs");
       const pathMod = require("path");
+      const { Keypair: KP } = require("@solana/web3.js");
+      const backendPayer = KP.fromSecretKey(
+        Uint8Array.from(JSON.parse(process.env.PAYER_PRIVATE_KEY))
+      ).publicKey.toBase58();
+
       fs.writeFileSync(
         pathMod.join(__dirname, "../demo-state.json"),
         JSON.stringify({
-          escrowPDA: escrowResult.escrowPDA,
-          payerPubkey: payerPubkey || "",
+          escrowPDA:       escrowResult.escrowPDA,
+          payerPubkey:     payerPubkey || backendPayer,
           recipientPubkey,
-          paymentRef: localId,
+          paymentRef:      localId,
           commitment,
           threshold,
-          privateValue: Number(privateValue),
-          salt: Number(salt),
+          privateValue:    Number(privateValue),
+          salt:            Number(salt),
         }, null, 2)
       );
 
@@ -189,11 +194,25 @@ app.get("/api/status/:escrowPda", async (req, res) => {
     const program = new anchor.Program(idl, provider);
 
     const state = await program.account.escrowState.fetch(new PublicKey(req.params.escrowPda));
+
+    // Read payerPubkey from demo-state.json — this is the actual Phantom wallet,
+    // not the backend keypair that signed the Solana tx
+    let displayPayer = state.payer.toBase58();
+    try {
+      const fs   = require("fs");
+      const path = require("path");
+      const demo = path.join(__dirname, "../demo-state.json");
+      if (fs.existsSync(demo)) {
+        const saved = JSON.parse(fs.readFileSync(demo, "utf8"));
+        if (saved.payerPubkey) displayPayer = saved.payerPubkey;
+      }
+    } catch (_) {}
+
     res.json({
-      payer: state.payer.toBase58(),
-      recipient: state.recipient.toBase58(),
-      amount: state.amount.toString(),
-      threshold: state.threshold.toString(),
+      payer:      displayPayer,
+      recipient:  state.recipient.toBase58(),
+      amount:     state.amount.toString(),
+      threshold:  state.threshold.toString(),
       isReleased: state.isReleased,
     });
   } catch (e) {
@@ -211,6 +230,7 @@ app.get("/api/demo", (req, res) => {
     const demoFile = path.join(__dirname, "../demo-state.json");
     if (fs.existsSync(demoFile)) {
       const saved = JSON.parse(fs.readFileSync(demoFile, "utf8"));
+      // Only fall back to backend keypair if no real wallet was recorded
       if (!saved.payerPubkey) {
         const payer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(process.env.PAYER_PRIVATE_KEY)));
         saved.payerPubkey = payer.publicKey.toBase58();
