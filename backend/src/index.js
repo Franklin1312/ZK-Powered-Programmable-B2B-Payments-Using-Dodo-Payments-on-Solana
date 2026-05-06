@@ -173,8 +173,9 @@ app.use(express.json());
 console.log("Loading routes...");
 try {
   app.use("/api/payment", require("./routes/payment"));
-  app.use("/api/proof", require("./routes/proof"));
+  app.use("/api/proof",   require("./routes/proof"));
   app.use("/api/release", require("./routes/release"));
+  app.use("/api/sla",     require("./routes/sla"));
   console.log("Routes loaded successfully");
 } catch (err) {
   console.error("FATAL: Error loading routes:", err);

@@ -59,7 +59,7 @@ function usePaymentPoller(onConfirmed) {
 export default function PayerDashboard({ onEscrowCreated, demoState, connectedPayer, addEvent, updateLastEvent, txEvents }) {
   const [form, setForm] = useState({
     amount: 10, threshold: 9900,
-    recipientPubkey: "", privateValue: 9950, salt: 12345,
+    recipientPubkey: "", commitment: "", privateValue: 9950, salt: 12345,
   });
   const [result,  setResult]  = useState(null);
   const [loading, setLoading] = useState(false);
@@ -212,13 +212,22 @@ export default function PayerDashboard({ onEscrowCreated, demoState, connectedPa
           ZK commitment parameters
         </p>
 
-        <div className="grid-2">
-          <Field label="Private SLA value" hint="Never sent on-chain">
-            <input className="field-input" type="number" value={form.privateValue} onChange={handle("privateValue")} />
-          </Field>
-          <Field label="Salt" hint="Random nonce for commitment">
-            <input className="field-input" type="number" value={form.salt} onChange={handle("salt")} />
-          </Field>
+        <div className="field">
+          <label className="field-label">
+            Commitment hash{" "}
+            <span style={{ fontWeight: 400, color: "var(--gray-400)" }}>
+              (from recipient — generated via "Generate Commitment" tab)
+            </span>
+          </label>
+          <input
+            className="field-input field-mono"
+            value={form.commitment}
+            onChange={handle("commitment")}
+            placeholder="Paste commitment hash from recipient..."
+          />
+          <p className="field-hint">
+            The recipient generates this from their real UptimeRobot data. You never see their actual uptime value.
+          </p>
         </div>
 
         <button className="btn btn-primary" onClick={submit}

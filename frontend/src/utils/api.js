@@ -24,3 +24,5 @@ export const getPaymentStatus  = (localId) => axios.get(`${BASE}/payment/status/
 export const generateProof     = (d) => axios.post(`${BASE}/proof/generate`, d);
 export const releasePayment    = (d) => axios.post(`${BASE}/release`, d);
 export const getDemoState      = ()  => axios.get(`${BASE}/demo`);
+export const fetchSLA          = (apiKey) => axios.post(`${BASE}/sla/fetch`, { apiKey });
+export const generateCommitment = (privateValue) => axios.post(`${BASE}/sla/commit`, { privateValue });

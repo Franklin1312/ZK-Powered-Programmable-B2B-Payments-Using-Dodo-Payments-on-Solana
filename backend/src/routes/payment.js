@@ -20,8 +20,15 @@ router.post("/create", async (req, res) => {
       customerEmail,
     } = req.body;
 
-    // 1. Compute ZK commitment off-chain
-    const commitment = await computeCommitment(privateValue, salt);
+    // 1. Use commitment from recipient (UptimeRobot flow) or compute from privateValue+salt (demo flow)
+    let commitment;
+    if (req.body.commitment && req.body.commitment.length > 10) {
+      commitment = req.body.commitment;
+      console.log("[Payment] Using pre-computed commitment from recipient");
+    } else {
+      commitment = await computeCommitment(privateValue, salt);
+      console.log("[Payment] Computed commitment from privateValue/salt");
+    }
     console.log("[Payment] Commitment:", commitment.slice(0, 20) + "...");
 
     // 2. Create Dodo checkout session with metadata
@@ -36,7 +43,7 @@ router.post("/create", async (req, res) => {
         salt:            String(salt),
         payerPubkey:     payerPubkey || "",
       },
-      returnUrl: process.env.FRONTEND_URL,
+      returnUrl: process.env.FRONTEND_URL || "http://localhost:5000",
       customerEmail: customerEmail || "payer@test.com",
     });
 

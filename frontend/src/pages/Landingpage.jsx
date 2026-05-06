@@ -1,199 +1,239 @@
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 
-export default function LandingPage({ onEnter }) {
-  const [hovered, setHovered] = useState(null);
+// Animated counter hook
+function useCounter(target, duration = 1800) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let start = null;
+    const isNum = !isNaN(parseFloat(target));
+    const num = parseFloat(target);
+    const suffix = isNum ? target.replace(String(num), "") : "";
+    const step = (ts) => {
+      if (!start) start = ts;
+      const p = Math.min((ts - start) / duration, 1);
+      const ease = 1 - Math.pow(1 - p, 3);
+      if (isNum) {
+        const val = num < 10 ? (ease * num).toFixed(0) : Math.floor(ease * num);
+        el.textContent = val + suffix;
+      }
+      if (p < 1) requestAnimationFrame(step);
+      else el.textContent = target;
+    };
+    const obs = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { requestAnimationFrame(step); obs.disconnect(); }
+    }, { threshold: 0.5 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [target, duration]);
+  return ref;
+}
 
-  const roles = [
-    {
-      id: "payer",
-      icon: "⬡",
-      title: "I'm a Payer",
-      sub: "Lock funds with a condition",
-      color: "#6366f1",
-      bg: "#eef2ff",
-      border: "#c7d2fe",
-    },
-    {
-      id: "recipient",
-      icon: "◈",
-      title: "I'm a Recipient",
-      sub: "Prove condition, claim funds",
-      color: "#0891b2",
-      bg: "#ecfeff",
-      border: "#a5f3fc",
-    },
-    {
-      id: "status",
-      icon: "◎",
-      title: "Verify an Escrow",
-      sub: "Check any escrow on-chain",
-      color: "#059669",
-      bg: "#ecfdf5",
-      border: "#a7f3d0",
-    },
-  ];
+// Reveal-on-scroll hook
+function useReveal(delay = 0) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.opacity = "0";
+    el.style.transform = "translateY(20px)";
+    el.style.transition = `opacity 0.7s ${delay}ms ease, transform 0.7s ${delay}ms ease`;
+    const obs = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) {
+        el.style.opacity = "1";
+        el.style.transform = "translateY(0)";
+        obs.disconnect();
+      }
+    }, { threshold: 0.15 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [delay]);
+  return ref;
+}
+
+// Floating particles canvas
+function Particles() {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    let w = canvas.width = window.innerWidth;
+    let h = canvas.height = window.innerHeight;
+    let raf;
+
+    const particles = Array.from({ length: 55 }, () => ({
+      x: Math.random() * w, y: Math.random() * h,
+      r: Math.random() * 1.5 + 0.3,
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: (Math.random() - 0.5) * 0.3,
+      a: Math.random() * 0.5 + 0.1,
+      c: Math.random() > 0.6 ? "#F59E0B" : Math.random() > 0.5 ? "#8B5CF6" : "#06B6D4",
+    }));
+
+    const draw = () => {
+      ctx.clearRect(0, 0, w, h);
+      particles.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = p.c;
+        ctx.globalAlpha = p.a;
+        ctx.fill();
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0) p.x = w; if (p.x > w) p.x = 0;
+        if (p.y < 0) p.y = h; if (p.y > h) p.y = 0;
+      });
+      ctx.globalAlpha = 1;
+
+      // Draw faint connecting lines
+      particles.forEach((p, i) => {
+        particles.slice(i + 1).forEach(q => {
+          const d = Math.hypot(p.x - q.x, p.y - q.y);
+          if (d < 120) {
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(q.x, q.y);
+            ctx.strokeStyle = `rgba(124,58,237,${0.06 * (1 - d / 120)})`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        });
+      });
+
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+
+    const onResize = () => { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; };
+    window.addEventListener("resize", onResize);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", onResize); };
+  }, []);
 
   return (
-    <div style={s.root}>
-      {/* Mesh bg */}
-      <div style={s.mesh} />
+    <canvas ref={canvasRef} style={{
+      position: "fixed", inset: 0, width: "100%", height: "100%",
+      pointerEvents: "none", zIndex: 0,
+    }} />
+  );
+}
 
-      {/* Hero */}
-      <div style={s.hero}>
-        <div style={s.badge}>
-          <span style={s.badgeDot} /> Live on Solana Testnet
-        </div>
+export default function LandingPage({ onEnter, onEnterAs }) {
+  const c1 = useCounter("<30s");
+  const c2 = useCounter("Groth16");
+  const c3 = useCounter("0");
+  const c4 = useCounter("100%");
 
-        <h1 style={s.h1}>
-          Programmable B2B Payments
-          <br />
-          <span style={s.h1accent}>with Zero-Knowledge Proofs</span>
-        </h1>
+  const flowRef = useReveal(0);
+  const statsRef = useReveal(100);
 
-        <p style={s.tagline}>
-          Lock funds in escrow. Release automatically when conditions are proven —
-          <br />
-          without revealing any sensitive business data.
-        </p>
-
-        {/* Tech stack pills */}
-        <div style={s.pills}>
-          {["Solana · Anchor", "Circom · Groth16", "SnarkJS", "Dodo Payments"].map(t => (
-            <span key={t} style={s.pill}>{t}</span>
-          ))}
-        </div>
-
-        {/* Stats row */}
-        <div style={s.stats}>
-          {[
-            { n: "< 30s",  label: "Proof generation" },
-            { n: "Groth16", label: "ZK system" },
-            { n: "0",      label: "Data revealed on-chain" },
-            { n: "100%",   label: "Trustless" },
-          ].map(({ n, label }) => (
-            <div key={label} style={s.stat}>
-              <span style={s.statN}>{n}</span>
-              <span style={s.statL}>{label}</span>
-            </div>
-          ))}
-        </div>
+  return (
+    <div className="landing-root">
+      {/* Animated background layers */}
+      <div className="landing-orbs">
+        <div className="orb orb-1" />
+        <div className="orb orb-2" />
+        <div className="orb orb-3" />
       </div>
+      <div className="landing-grid" />
+      <Particles />
 
-      {/* Role cards */}
-      <div style={s.cards}>
-        {roles.map(r => (
-          <button
-            key={r.id}
-            style={{
-              ...s.roleCard,
-              borderColor: hovered === r.id ? r.border : "#e2e8f0",
-              background: hovered === r.id ? r.bg : "#fff",
-              transform: hovered === r.id ? "translateY(-4px)" : "none",
-              boxShadow: hovered === r.id
-                ? `0 12px 40px ${r.color}18, 0 4px 12px ${r.color}10`
-                : "0 2px 8px rgba(0,0,0,0.06)",
-            }}
-            onMouseEnter={() => setHovered(r.id)}
-            onMouseLeave={() => setHovered(null)}
-            onClick={() => onEnter(r.id)}
-          >
-            <div style={{ ...s.roleIcon, background: r.bg, color: r.color, border: `1px solid ${r.border}` }}>
-              {r.icon}
+      <div className="landing-inner">
+        {/* Nav */}
+        <nav className="landing-nav">
+          <div className="landing-brand">
+            <div className="landing-brand-icon">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M9 1.5L16 5.5V9.5C16 13.5 12.5 16.5 9 17C5.5 16.5 2 13.5 2 9.5V5.5L9 1.5Z"
+                  stroke="#F59E0B" strokeWidth="1.5" fill="rgba(245,158,11,0.1)" />
+                <path d="M6 9.5l2.5 2.5L12 7.5" stroke="#F59E0B" strokeWidth="1.5"
+                  strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </div>
-            <h3 style={{ ...s.roleTitle, color: hovered === r.id ? r.color : "#1e293b" }}>{r.title}</h3>
-            <p style={s.roleSub}>{r.sub}</p>
-            <span style={{ ...s.roleArrow, color: r.color, opacity: hovered === r.id ? 1 : 0 }}>
-              Enter →
-            </span>
-          </button>
-        ))}
-      </div>
+            <span className="landing-brand-name">ZK<span>Pay</span></span>
+          </div>
+          <div className="landing-live-pill">
+            <span className="live-dot" />
+            Live on Solana Testnet
+          </div>
+        </nav>
 
-      {/* Flow diagram */}
-      <div style={s.flow}>
-        <p style={s.flowTitle}>How it works</p>
-        <div style={s.flowSteps}>
-          {[
-            { icon: "💳", step: "Payer deposits", sub: "via Dodo Payments" },
-            { icon: "🔒", step: "Funds locked",   sub: "Solana escrow PDA" },
-            { icon: "🔐", step: "ZK proof",       sub: "Circom + SnarkJS" },
-            { icon: "✓",  step: "Verified",       sub: "On-chain check" },
-            { icon: "💸", step: "Auto release",   sub: "To recipient" },
-          ].map(({ icon, step, sub }, i, arr) => (
-            <div key={step} style={{ display: "flex", alignItems: "center" }}>
-              <div style={s.flowStep}>
-                <div style={s.flowIcon}>{icon}</div>
-                <span style={s.flowStepLabel}>{step}</span>
-                <span style={s.flowStepSub}>{sub}</span>
+        {/* Hero */}
+        <section className="landing-hero">
+          <div className="hero-eyebrow">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M6 1L7.5 4.5H11L8 6.5 9 10 6 8 3 10 4 6.5 1 4.5h3.5L6 1z" />
+            </svg>
+            Programmable B2B Escrow · Zero-Knowledge Proofs
+          </div>
+
+          <h1 className="hero-title">
+            <span className="line-1">Programmable B2B Payments</span>
+            <span className="line-2">with Zero-Knowledge Proofs</span>
+          </h1>
+
+          <p className="hero-sub">
+            Lock funds in escrow. Release automatically when conditions are
+            proven — without revealing any sensitive business data on-chain.
+          </p>
+
+          <div className="hero-chips">
+            {["Solana · Anchor", "Circom · Groth16", "SnarkJS", "Dodo Payments", "UptimeRobot Oracle"].map(c => (
+              <div key={c} className="hero-chip">
+                <span className="hero-chip-dot" />{c}
               </div>
-              {i < arr.length - 1 && <div style={s.flowArrow}>→</div>}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+
+          <div className="hero-cta">
+            <button className="btn-hero-primary" onClick={onEnter}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M8 2l6 3.5v4L8 13l-6-3.5v-4L8 2z" />
+              </svg>
+              Launch App
+            </button>
+            <button className="btn-hero-ghost" onClick={() => onEnterAs("commit")}>
+              Generate Commitment
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M3 7h8M8 4l3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Stats */}
+          <div className="hero-stats" ref={statsRef}>
+            {[
+              { ref: c1, label: "Proof generation", val: "<30s" },
+              { ref: c2, label: "ZK system", val: "Groth16" },
+              { ref: c3, label: "Data revealed on-chain", val: "0" },
+              { ref: c4, label: "Trust", val: "100%" },
+            ].map(({ ref: r, label, val }) => (
+              <div key={label} className="hero-stat">
+                <span className="hero-stat-num" ref={r}>{val}</span>
+                <span className="hero-stat-lbl">{label}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Flow section */}
+        <section className="landing-flow" ref={flowRef}>
+          <p className="landing-flow-title">How it works</p>
+          <div className="flow-steps">
+            {[
+              { n: "01", label: "Pay via Dodo", desc: "Fiat → USDC conversion" },
+              { n: "02", label: "Lock Escrow", desc: "ZK commitment on Solana" },
+              { n: "03", label: "Prove SLA", desc: "Groth16 proof generation" },
+              { n: "04", label: "Auto Release", desc: "On-chain verification" },
+            ].map(({ n, label, desc }) => (
+              <div key={n} className="flow-step">
+                <div className="flow-num">{n}</div>
+                <div className="flow-label">{label}</div>
+                <div className="flow-desc">{desc}</div>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   );
 }
-
-const s = {
-  root:   { minHeight: "100vh", display: "flex", flexDirection: "column",
-            alignItems: "center", padding: "0 24px 60px", position: "relative",
-            overflow: "hidden" },
-  mesh:   { position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0,
-            background: `
-              radial-gradient(ellipse 70% 50% at 20% 10%, rgba(99,102,241,0.07) 0%, transparent 60%),
-              radial-gradient(ellipse 60% 40% at 80% 5%, rgba(8,145,178,0.05) 0%, transparent 55%),
-              radial-gradient(ellipse 50% 60% at 50% 100%, rgba(5,150,105,0.04) 0%, transparent 60%)
-            ` },
-  hero:   { position: "relative", zIndex: 1, textAlign: "center",
-            maxWidth: 720, paddingTop: 80, paddingBottom: 20 },
-  badge:  { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12,
-            color: "#059669", background: "#ecfdf5", border: "1px solid #a7f3d0",
-            borderRadius: 20, padding: "4px 12px", marginBottom: 28, fontWeight: 500 },
-  badgeDot: { width: 6, height: 6, borderRadius: "50%", background: "#34d399",
-              animation: "pulse-dot 2s ease-in-out infinite", display: "inline-block" },
-  h1:     { fontSize: 44, fontWeight: 700, color: "#0f172a", lineHeight: 1.15,
-            letterSpacing: "-1px", margin: "0 0 20px", fontFamily: "'DM Sans', sans-serif" },
-  h1accent: { background: "linear-gradient(135deg, #6366f1, #0891b2)",
-              WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-              backgroundClip: "text" },
-  tagline: { fontSize: 17, color: "#64748b", lineHeight: 1.7, margin: "0 0 28px",
-             fontWeight: 400 },
-  pills:  { display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, marginBottom: 40 },
-  pill:   { background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 20,
-            padding: "5px 14px", fontSize: 12, color: "#475569", fontWeight: 500,
-            fontFamily: "'DM Mono', monospace" },
-  stats:  { display: "flex", justifyContent: "center", gap: 0, borderTop: "1px solid #f1f5f9",
-            paddingTop: 32, marginBottom: 0 },
-  stat:   { display: "flex", flexDirection: "column", alignItems: "center",
-            padding: "0 32px", borderRight: "1px solid #f1f5f9" },
-  statN:  { fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.5px",
-            fontFamily: "'DM Sans', sans-serif" },
-  statL:  { fontSize: 11, color: "#94a3b8", marginTop: 2, fontWeight: 400 },
-  cards:  { position: "relative", zIndex: 1, display: "flex", gap: 16,
-            maxWidth: 800, width: "100%", marginTop: 48, marginBottom: 48 },
-  roleCard: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
-              padding: "28px 20px", border: "1.5px solid", borderRadius: 20,
-              cursor: "pointer", transition: "all 0.2s cubic-bezier(0.4,0,0.2,1)",
-              fontFamily: "'DM Sans', sans-serif", gap: 8 },
-  roleIcon: { width: 52, height: 52, borderRadius: 14, display: "flex",
-              alignItems: "center", justifyContent: "center", fontSize: 22,
-              marginBottom: 4, transition: "all 0.2s" },
-  roleTitle: { fontSize: 16, fontWeight: 600, margin: 0, transition: "color 0.2s" },
-  roleSub:  { fontSize: 12, color: "#94a3b8", margin: 0 },
-  roleArrow: { fontSize: 12, fontWeight: 600, marginTop: 4,
-               transition: "opacity 0.2s" },
-  flow:   { position: "relative", zIndex: 1, maxWidth: 900, width: "100%",
-            background: "#fff", border: "1px solid #e2e8f0", borderRadius: 20,
-            padding: "28px 36px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
-  flowTitle: { fontSize: 12, fontWeight: 600, color: "#94a3b8", marginBottom: 20,
-               letterSpacing: "0.5px", textTransform: "uppercase" },
-  flowSteps: { display: "flex", alignItems: "center", justifyContent: "space-between" },
-  flowStep: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 },
-  flowIcon: { fontSize: 22, width: 48, height: 48, background: "#f8fafc",
-              border: "1px solid #e2e8f0", borderRadius: 12,
-              display: "flex", alignItems: "center", justifyContent: "center" },
-  flowStepLabel: { fontSize: 12, fontWeight: 600, color: "#334155" },
-  flowStepSub:   { fontSize: 10, color: "#94a3b8", fontFamily: "'DM Mono', monospace" },
-  flowArrow: { color: "#cbd5e1", fontSize: 18, margin: "0 4px", paddingBottom: 24 },
-};

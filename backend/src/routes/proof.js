@@ -15,14 +15,30 @@ router.post("/generate", async (req, res) => {
     );
 
     const valid = await verifyProof(proof, publicSignals);
-    if (!valid) return res.status(400).json({ error: "Proof invalid" });
+    if (!valid) return res.status(400).json({ error: "Proof invalid" } );
 
     console.log("[Proof] Valid proof generated");
     res.json({ success: true, proof, publicSignals, verified: true });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+  // Circom wraps the real reason — dig it out
+  const raw = err.message || "";
+  let friendly = raw;
+
+  if (raw.includes("Assert Failed")) {
+    const val  = req.body.privateValue;
+    const thr  = req.body.threshold;
+    if (val && thr) {
+      friendly = `ZK assertion failed: privateValue (${val}) must be greater than threshold (${thr}). Your SLA value does not meet the required threshold.`;
+    } else {
+      friendly = "ZK assertion failed: the private value does not satisfy the threshold condition.";
+    }
+  } else if (raw.includes("Not enough values")) {
+    friendly = "ZK error: missing input values. Check commitment, privateValue and salt.";
   }
+
+  console.error("[Proof] Error:", raw);
+  res.status(400).json({ error: friendly, detail: raw });
+}
 });
 
 module.exports = router;
