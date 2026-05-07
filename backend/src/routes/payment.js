@@ -1,6 +1,6 @@
 const express = require("express");
-const router  = express.Router();
-const dodo    = require("../services/dodo");
+const router = express.Router();
+const dodo = require("../services/dodo");
 const { computeCommitment } = require("../services/zk");
 
 // POST /api/payment/create
@@ -18,40 +18,41 @@ router.post("/create", async (req, res) => {
       salt,
       payerPubkey,
       customerEmail,
+      commitment: pastedCommitment,  // from recipient via CommitmentGenerator
     } = req.body;
 
-    // 1. Use commitment from recipient (UptimeRobot flow) or compute from privateValue+salt (demo flow)
+    // 1. Use pasted commitment (recipient-generated flow) or compute from privateValue+salt (demo)
     let commitment;
-    if (req.body.commitment && req.body.commitment.length > 10) {
-      commitment = req.body.commitment;
-      console.log("[Payment] Using pre-computed commitment from recipient");
+    if (pastedCommitment && pastedCommitment.trim().length > 10) {
+      commitment = pastedCommitment.trim();
+      console.log("[Payment] Using pasted commitment from recipient");
     } else {
       commitment = await computeCommitment(privateValue, salt);
       console.log("[Payment] Computed commitment from privateValue/salt");
     }
     console.log("[Payment] Commitment:", commitment.slice(0, 20) + "...");
 
-    // 2. Create Dodo checkout session with metadata
+    // 2. Create Dodo checkout session — store commitment in metadata so webhook can use it
     const session = await dodo.createCheckoutSession({
       amount: Number(amount),
       recipientId: recipientPubkey,
       metadata: {
-        threshold:       String(threshold),
-        commitment,
+        threshold: String(threshold),
+        commitment,                         // ← always store the final commitment
         recipientPubkey,
-        privateValue:    String(privateValue),
-        salt:            String(salt),
-        payerPubkey:     payerPubkey || "",
+        privateValue: String(privateValue || ""),
+        salt: String(salt || ""),
+        payerPubkey: payerPubkey || "",
       },
       returnUrl: process.env.FRONTEND_URL || "http://localhost:5000",
       customerEmail: customerEmail || "payer@test.com",
     });
 
     res.json({
-      success:     true,
+      success: true,
       checkoutUrl: session.checkoutUrl,
-      sessionId:   session.sessionId,
-      localId:     session.localId,
+      sessionId: session.sessionId,
+      localId: session.localId,
       commitment,
     });
   } catch (err) {
@@ -96,14 +97,14 @@ router.get("/status/:localId", async (req, res) => {
     }
 
     res.json({
-      localId:      payment.id,
-      status:       payment.status,
-      escrowPDA:    payment.escrow_pda || null,
-      escrowTx:     payment.escrow_tx || null,
-      amount:       payment.amount,
-      commitment:   payment.metadata?.commitment || null,
+      localId: payment.id,
+      status: payment.status,
+      escrowPDA: payment.escrow_pda || null,
+      escrowTx: payment.escrow_tx || null,
+      amount: payment.amount,
+      commitment: payment.metadata?.commitment || null,
       recipientPubkey: payment.metadata?.recipientPubkey || payment.recipient_id,
-      threshold:    payment.metadata?.threshold || null,
+      threshold: payment.metadata?.threshold || null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

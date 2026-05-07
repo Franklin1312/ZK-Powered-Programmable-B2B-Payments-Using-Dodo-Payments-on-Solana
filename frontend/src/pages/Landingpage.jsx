@@ -191,7 +191,7 @@ export default function LandingPage({ onEnter, onEnterAs }) {
               </svg>
               Launch App
             </button>
-            <button className="btn-hero-ghost" onClick={() => onEnterAs("commit")}>
+            <button className="btn-hero-ghost" onClick={() => onEnterAs && onEnterAs("commit")}>
               Generate Commitment
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M3 7h8M8 4l3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />
@@ -205,7 +205,7 @@ export default function LandingPage({ onEnter, onEnterAs }) {
               { ref: c1, label: "Proof generation", val: "<30s" },
               { ref: c2, label: "ZK system", val: "Groth16" },
               { ref: c3, label: "Data revealed on-chain", val: "0" },
-              { ref: c4, label: "Trust", val: "100%" },
+              { ref: c4, label: "Trustless", val: "100%" },
             ].map(({ ref: r, label, val }) => (
               <div key={label} className="hero-stat">
                 <span className="hero-stat-num" ref={r}>{val}</span>

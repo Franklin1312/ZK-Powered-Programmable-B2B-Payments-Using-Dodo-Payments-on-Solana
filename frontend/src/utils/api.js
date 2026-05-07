@@ -1,28 +1,29 @@
 import axios from "axios";
 
-// Construct API base URL dynamically
 function getApiBase() {
-  // If VITE_API_URL is explicitly set in .env, use it
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
-  }
-  
-  // For Codespaces: replace port in domain
-  if (window.location.hostname.includes('github.dev')) {
-    const domain = window.location.hostname.replace(/-5000\./, '-3001.').replace(/-5173\./, '-3001.');
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  if (window.location.hostname.includes("github.dev")) {
+    const domain = window.location.hostname
+      .replace(/-5000\./, "-3001.").replace(/-5173\./, "-3001.");
     return `https://${domain}/api`;
   }
-
-  // Default: use relative path, proxied by Vite to localhost:3001
   return "/api";
 }
 
 const BASE = getApiBase();
 
 export const createPayment     = (d) => axios.post(`${BASE}/payment/create`, d);
-export const getPaymentStatus  = (localId) => axios.get(`${BASE}/payment/status/${localId}`);
+export const getPaymentStatus  = (id) => axios.get(`${BASE}/payment/status/${id}`);
 export const generateProof     = (d) => axios.post(`${BASE}/proof/generate`, d);
 export const releasePayment    = (d) => axios.post(`${BASE}/release`, d);
 export const getDemoState      = ()  => axios.get(`${BASE}/demo`);
-export const fetchSLA          = (apiKey) => axios.post(`${BASE}/sla/fetch`, { apiKey });
-export const generateCommitment = (privateValue) => axios.post(`${BASE}/sla/commit`, { privateValue });
+
+// SLA oracle endpoints
+export const fetchUptimeRobot  = (apiKey, monitorId) =>
+  axios.post(`${BASE}/sla/fetch`, { apiKey, monitorId });
+
+export const fetchGitHub       = (d) =>
+  axios.post(`${BASE}/sla/github`, d);
+
+export const generateCommitment = (privateValue) =>
+  axios.post(`${BASE}/sla/commit`, { privateValue });

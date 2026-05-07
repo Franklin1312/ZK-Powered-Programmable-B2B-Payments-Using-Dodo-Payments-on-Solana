@@ -45,15 +45,22 @@ app.post("/webhook/dodo", async (req, res) => {
     try {
       const { Webhook } = require("standardwebhooks");
       const wh = new Webhook(secret);
+
+      // dodo wh listen CLI sends: id, signature, timestamp (no "webhook-" prefix)
+      // Production Dodo API sends: webhook-id, webhook-signature, webhook-timestamp
+      const headerId        = req.headers["webhook-id"]        || req.headers["id"];
+      const headerSig       = req.headers["webhook-signature"]  || req.headers["signature"];
+      const headerTimestamp = req.headers["webhook-timestamp"]  || req.headers["timestamp"];
+
       wh.verify(rawBody, {
-        "webhook-id":        req.headers["webhook-id"],
-        "webhook-signature": req.headers["webhook-signature"],
-        "webhook-timestamp": req.headers["webhook-timestamp"],
+        "webhook-id":        headerId,
+        "webhook-signature": headerSig,
+        "webhook-timestamp": headerTimestamp,
       });
       console.log("[Webhook] Signature verified ✓");
     } catch (err) {
       console.error("[Webhook] Signature verification failed:", err.message);
-      console.error("[Webhook] ⚠ Check that DODO_PAYMENTS_WEBHOOK_KEY in .env matches the secret shown in Dodo dashboard → Developers → Webhooks → your endpoint → Signing Secret");
+      console.error("[Webhook] ⚠ Update DODO_PAYMENTS_WEBHOOK_KEY in .env with the secret shown at the top of your 'dodo wh listen' terminal");
       return; // reject — wrong secret or tampered payload
     }
   } else {
@@ -103,7 +110,17 @@ app.post("/webhook/dodo", async (req, res) => {
       const paymentRecord = dodo.getPayment(localId);
       let finalAmountUsd = paymentRecord ? paymentRecord.amount : (amount / 100);
 
-      const commitment = await zk.computeCommitment(privateValue, salt);
+      // Use pre-computed commitment from metadata if available (recipient-generated flow).
+      // Only fall back to recomputing from privateValue+salt in demo/legacy mode.
+      let commitment;
+      const storedCommitment = metadata.commitment || (paymentRecord?.metadata?.commitment);
+      if (storedCommitment && storedCommitment.length > 10) {
+        commitment = storedCommitment;
+        console.log("[Webhook] Using pre-computed commitment from metadata");
+      } else {
+        commitment = await zk.computeCommitment(privateValue, salt);
+        console.log("[Webhook] Recomputed commitment from privateValue/salt");
+      }
       console.log("[Webhook] Commitment:", commitment.slice(0, 20) + "...");
 
       const amountMicros = Math.round(finalAmountUsd * 1_000_000);

@@ -1,196 +1,239 @@
-import { useEffect, useState } from "react";
-import LandingPage         from "./pages/Landingpage";
-import PayerDashboard      from "./pages/PayerDashboard";
-import RecipientDashboard  from "./pages/RecipientDashboard";
-import StatusChecker       from "./pages/StatusChecker";
+import { useEffect, useState, useRef } from "react";
+import LandingPage from "./pages/Landingpage";
+import PayerDashboard from "./pages/PayerDashboard";
+import RecipientDashboard from "./pages/RecipientDashboard";
+import StatusChecker from "./pages/StatusChecker";
 import CommitmentGenerator from "./pages/CommitmentGenerator";
-import { getDemoState }    from "./utils/api";
+import { getDemoState } from "./utils/api";
 import { getPhantomProvider } from "./utils/wallet";
 import "./App.css";
 
-const LockIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-    <rect x="3" y="7" width="10" height="7" rx="1.5" />
-    <path d="M5.5 7V4.5a2.5 2.5 0 015 0V7" />
-    <circle cx="8" cy="10.5" r="1" fill="currentColor" stroke="none" />
-  </svg>
-);
-const StarIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-    <path d="M8 2l1.8 3.6L14 6.4l-3 2.9.7 4.1L8 11.3l-3.7 2.1.7-4.1-3-2.9 4.2-.8L8 2z" />
-  </svg>
-);
-const DownloadIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-    <path d="M8 2v8M5 7l3 3 3-3M3 13h10" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-const CheckIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-    <circle cx="8" cy="8" r="6" />
-    <path d="M5.5 8l2 2 3-3" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-const ShieldIcon = () => (
+/* ── SVG Icons (no emojis) ─────────────────────────────────────────────── */
+const IconShield = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-    <path d="M9 1.5L16 5.5V9.5C16 13.5 12.5 16.5 9 17C5.5 16.5 2 13.5 2 9.5V5.5L9 1.5Z"
-      stroke="white" strokeWidth="1.5" fill="rgba(255,255,255,0.15)" />
-    <path d="M6 9.5l2.5 2.5L12 7.5" stroke="white" strokeWidth="1.5"
-      strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M9 1.5L16 5V9.5C16 13 13 16 9 16.5C5 16 2 13 2 9.5V5L9 1.5Z"
+      fill="rgba(255,255,255,0.2)" stroke="white" strokeWidth="1.4" strokeLinejoin="round"/>
+    <path d="M6.5 9l2 2L12 7" stroke="white" strokeWidth="1.4"
+      strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
 
+const IconLock = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <rect x="2" y="5.5" width="9" height="6" rx="1.5"/>
+    <path d="M4.5 5.5V3.5a2 2 0 014 0v2" strokeLinecap="round"/>
+    <circle cx="6.5" cy="8.5" r="0.8" fill="currentColor" stroke="none"/>
+  </svg>
+);
+
+const IconStar = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <path d="M6.5 1.5l1.4 3h3l-2.5 2 1 3-2.9-2-2.9 2 1-3-2.5-2h3z" strokeLinejoin="round"/>
+  </svg>
+);
+
+const IconDownload = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <path d="M6.5 2v6M4 6l2.5 2.5L9 6" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M2 10.5h9" strokeLinecap="round"/>
+  </svg>
+);
+
+const IconCheck = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <circle cx="6.5" cy="6.5" r="5"/>
+    <path d="M4.5 6.5l1.5 1.5 2.5-3" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const IconWallet = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3">
+    <rect x="1" y="3" width="10" height="8" rx="1.5"/>
+    <path d="M8 7h1.5" strokeLinecap="round"/>
+    <path d="M3 3V2a2 2 0 014 0v1" strokeLinecap="round"/>
+  </svg>
+);
+
+/* ── Tabs ──────────────────────────────────────────────────────────────── */
 const TABS = [
-  { id: "commit",    label: "Generate Commitment",  Icon: StarIcon },
-  { id: "payer",     label: "Lock Payment",         Icon: LockIcon },
-  { id: "recipient", label: "Claim Payment",        Icon: DownloadIcon },
-  { id: "status",    label: "Verify Status",        Icon: CheckIcon },
+  { id: "commit",    label: "Generate Commitment", Icon: IconStar },
+  { id: "payer",     label: "Lock Payment",        Icon: IconLock },
+  { id: "recipient", label: "Claim Payment",       Icon: IconDownload },
+  { id: "status",    label: "Verify Status",       Icon: IconCheck },
+];
+
+/* ── Stats bar data ────────────────────────────────────────────────────── */
+const STATS = [
+  { label: "Network",     value: "Solana Testnet",   cls: "green" },
+  { label: "ZK System",   value: "Groth16 · bn128",  cls: "accent" },
+  { label: "Circuit",     value: "threshold.circom", cls: "" },
+  { label: "Hash Fn",     value: "Poseidon",         cls: "" },
+  { label: "Proof Size",  value: "~200 bytes",       cls: "" },
+  { label: "Verify Time", value: "< 1s on-chain",    cls: "gold" },
 ];
 
 export default function App() {
   const _p = new URLSearchParams(window.location.search);
   const _isReturn = _p.get("status") === "success" && _p.get("payment");
-
   const [screen,       setScreen]       = useState(_isReturn ? "app" : "landing");
-  const [role,         setRole]         = useState("payer");
-  const [demoState,    setDemoState]    = useState(null);
-  const [walletPubkey, setWalletPubkey] = useState(null);
+  const [role,         setRole]         = useState(_isReturn ? "payer" : "commit");
   const [escrowData,   setEscrowData]   = useState(null);
+  const [demoState,    setDemoState]    = useState(null);
   const [txEvents,     setTxEvents]     = useState([]);
+  const [walletPubkey, setWalletPubkey] = useState("");
 
+  /* Phantom wallet */
   useEffect(() => {
-    getDemoState().then(r => setDemoState(r.data)).catch(() => {});
+    const provider = getPhantomProvider();
+    if (!provider?.isPhantom) return;
+    const onConnect    = (pk) => setWalletPubkey(pk?.toBase58?.() || "");
+    const onDisconnect = ()   => setWalletPubkey("");
+    provider.on("connect",    onConnect);
+    provider.on("disconnect", onDisconnect);
+    provider.connect({ onlyIfTrusted: true }).catch(() => {});
+    return () => { provider.off("connect", onConnect); provider.off("disconnect", onDisconnect); };
   }, []);
 
   const connectWallet = async () => {
-    try {
-      const provider = getPhantomProvider();
-      if (!provider) { alert("Please install Phantom wallet"); return; }
-      const resp = await provider.connect();
-      setWalletPubkey(resp.publicKey.toBase58());
-    } catch (e) { console.error(e); }
+    const provider = getPhantomProvider();
+    if (!provider?.isPhantom) { window.open("https://phantom.app/", "_blank", "noopener,noreferrer"); return; }
+    const res = await provider.connect();
+    setWalletPubkey(res.publicKey.toBase58());
   };
 
-  const addEvent = (title, desc, status = "pending") => {
-    setTxEvents(prev => [...prev, {
-      title, desc, status,
-      time: new Date().toLocaleTimeString("en-US", { hour12: false }),
-    }]);
+  const disconnectWallet = async () => {
+    const provider = getPhantomProvider();
+    if (provider?.isPhantom) { await provider.disconnect(); setWalletPubkey(""); }
   };
 
-  const updateLastEvent = (status, desc) => {
-    setTxEvents(prev => prev.map((e, i) =>
-      i === prev.length - 1 ? { ...e, status, ...(desc ? { desc } : {}) } : e
-    ));
+  const eventCounterRef = useRef(0);
+  const addEvent = (label, sub, status = "done") => {
+    const ts = new Date().toLocaleTimeString("en-US", { hour12: false });
+    const id = ++eventCounterRef.current;          // always unique, no Date.now() collision
+    setTxEvents(prev => [...prev, { id, label, sub, status, ts }]);
   };
 
-  const onEscrowCreated = (data) => {
-    setEscrowData(data);
-    setDemoState(prev => ({ ...prev, ...data }));
+  const updateLastEvent = (status, sub) => {
+    setTxEvents(prev => {
+      const copy = [...prev];
+      if (!copy.length) return copy;
+      copy[copy.length - 1] = { ...copy[copy.length - 1], status, ...(sub ? { sub } : {}) };
+      return copy;
+    });
   };
 
+  /* Landing */
   if (screen === "landing") {
     return (
       <LandingPage
-        onEnter={() => setScreen("app")}
-        onEnterAs={(r) => { setScreen("app"); setRole(r); }}
+        onEnter={() => { setRole("commit"); setScreen("app"); }}
+        onEnterAs={(r) => { setRole(r || "commit"); setScreen("app"); }}
       />
     );
   }
 
-  const fmt = (pk) => pk ? `${pk.slice(0,4)}...${pk.slice(-4)}` : null;
+  const fmt = (pk) => pk ? `${pk.slice(0,4)}…${pk.slice(-4)}` : null;
+  const tabIdx = TABS.findIndex(t => t.id === role);
 
   return (
     <div className="app-root">
+      <div className="bg-mesh" />
 
-      {/* ── Header ─────────────────────────────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────── */}
       <header className="app-header">
-        <div className="header-inner">
-          <a className="header-brand" onClick={() => setScreen("landing")}>
-            <div className="brand-logo"><ShieldIcon /></div>
-            <span className="brand-name">ZK<span>Pay</span></span>
-          </a>
-
-          <div className="header-pills">
-            <span className="header-pill active">
-              <span className="pill-dot" />Solana Testnet
-            </span>
-            <span className="header-pill">Groth16 ZK</span>
-            <span className="header-pill active">
-              <span className="pill-dot" />Dodo Payments
-            </span>
+        <div className="header-brand" onClick={() => setScreen("landing")}>
+          <div className="brand-mark"><IconShield /></div>
+          <div>
+            <div className="brand-title">B2B Payments</div>
+            <div className="brand-sub">Zero-Knowledge · Solana · Programmable Escrow</div>
           </div>
+        </div>
 
-          <div className="header-right">
-            {walletPubkey ? (
-              <button className="wallet-btn connected">
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-                  <circle cx="5" cy="5" r="4" />
-                </svg>
-                {fmt(walletPubkey)}
-              </button>
-            ) : (
-              <button className="wallet-btn" onClick={connectWallet}>
-                <svg width="13" height="13" viewBox="0 0 13 13" fill="none"
-                  stroke="currentColor" strokeWidth="1.5">
-                  <rect x="1.5" y="4" width="10" height="7.5" rx="1.5" />
-                  <path d="M8.5 7.5h1.5" strokeLinecap="round" />
-                  <path d="M3.5 4V3a2 2 0 014 0v1" />
-                </svg>
-                Connect Wallet
-              </button>
-            )}
-            <span className="demo-pill">DEMO</span>
-          </div>
+        <div className="header-pills">
+          {[
+            { color: "#7c3aed", dot: "#a78bfa", label: "Solana Testnet" },
+            { color: "#0891b2", dot: "#22d3ee", label: "Groth16 ZK" },
+            { color: "#059669", dot: "#34d399", label: "Dodo Payments" },
+          ].map(({ color, dot, label }) => (
+            <span key={label} className="status-pill"
+              style={{ borderColor: color + "30", color, background: `${color}08` }}>
+              <span className="pill-dot" style={{ background: dot }} />
+              {label}
+            </span>
+          ))}
+
+          <button onClick={walletPubkey ? disconnectWallet : connectWallet}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              background: walletPubkey ? "rgba(5,150,105,0.07)" : "rgba(124,58,237,0.07)",
+              border: `1px solid ${walletPubkey ? "rgba(5,150,105,0.25)" : "rgba(124,58,237,0.25)"}`,
+              color: walletPubkey ? "#065f46" : "#6d28d9",
+              borderRadius: 20, padding: "5px 13px",
+              fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 600,
+              cursor: "pointer", letterSpacing: "0.02em", transition: "all 0.2s",
+              backdropFilter: "blur(8px)",
+            }}>
+            <IconWallet />
+            {walletPubkey ? fmt(walletPubkey) : "Connect Phantom"}
+          </button>
+
+          <button onClick={async () => {
+            try { const r = await getDemoState(); setDemoState(r.data); } catch { setDemoState({ _demo: true }); }
+          }} style={{
+            background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)",
+            color: "#92400e", borderRadius: 20, padding: "5px 13px",
+            fontFamily: "'Orbitron', monospace", fontSize: 9, fontWeight: 700,
+            cursor: "pointer", letterSpacing: "0.12em", transition: "all 0.2s",
+          }}>DEMO</button>
         </div>
       </header>
 
-      {/* ── Spec bar ───────────────────────────────────────────────────── */}
-      <div className="spec-bar">
-        <div className="spec-bar-inner">
-          {[
-            { label: "Network",     val: "Solana Testnet",   cls: "green" },
-            { label: "ZK System",   val: "Groth16 · bn128",  cls: "" },
-            { label: "Circuit",     val: "threshold.circom", cls: "violet" },
-            { label: "Hash Fn",     val: "Poseidon",         cls: "" },
-            { label: "Proof Size",  val: "~200 bytes",       cls: "" },
-            { label: "Verify Time", val: "< 1s on-chain",    cls: "gold" },
-          ].map(({ label, val, cls }) => (
-            <div key={label} className="spec-item">
-              <span className="spec-label">{label}</span>
-              <span className={`spec-value ${cls}`}>{val}</span>
-            </div>
-          ))}
-        </div>
+      {/* ── Stats bar ───────────────────────────────────────────────── */}
+      <div className="stats-bar">
+        {STATS.map(({ label, value, cls }) => (
+          <div key={label} className="stats-bar-item">
+            <div className="stats-bar-label">{label}</div>
+            <div className={`stats-bar-value ${cls}`}>{value}</div>
+          </div>
+        ))}
       </div>
 
-      {/* ── Tab bar ────────────────────────────────────────────────────── */}
-      <nav className="tab-bar">
-        <div className="tab-bar-inner">
+      {/* ── Tabs ────────────────────────────────────────────────────── */}
+      <nav className="tab-nav">
+        <div className="tab-track">
           {TABS.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              className={`tab-btn ${role === id ? "active" : ""}`}
-              onClick={() => setRole(id)}
-            >
+            <button key={id}
+              className={`tab-btn ${role === id ? "tab-active" : ""}`}
+              onClick={() => setRole(id)}>
               <span className="tab-icon"><Icon /></span>
-              <span className="tab-label">{label}</span>
+              <span>{label}</span>
             </button>
           ))}
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
-            <button className="btn btn-ghost btn-sm" onClick={() => setScreen("landing")}>
-              ← Home
-            </button>
-          </div>
+          <div className="tab-indicator" style={{
+            left: `${(tabIdx / TABS.length) * 100}%`,
+            width: `${100 / TABS.length}%`,
+          }} />
         </div>
+        <button onClick={() => setScreen("landing")} style={{
+          background: "none", border: "none", color: "var(--slate-400)",
+          fontSize: 11, cursor: "pointer", padding: "0 20px",
+          display: "flex", alignItems: "center", gap: 5,
+          fontFamily: "'Exo 2', sans-serif", fontWeight: 500,
+          transition: "color 0.2s",
+        }}
+          onMouseEnter={e => e.currentTarget.style.color = "var(--slate-700)"}
+          onMouseLeave={e => e.currentTarget.style.color = "var(--slate-400)"}>
+          ← Home
+        </button>
       </nav>
 
-      {/* ── Content ────────────────────────────────────────────────────── */}
-      <main className="main-content">
+      {/* ── Content ─────────────────────────────────────────────────── */}
+      <main className="app-main">
         <div className="content-fade" key={role}>
+          {role === "commit" && <CommitmentGenerator />}
           {role === "payer" && (
             <PayerDashboard
-              onEscrowCreated={onEscrowCreated}
+              onEscrowCreated={(data) => setEscrowData(data)}
               demoState={demoState}
               connectedPayer={walletPubkey}
               addEvent={addEvent}
@@ -198,11 +241,10 @@ export default function App() {
               txEvents={txEvents}
             />
           )}
-          {role === "commit"    && <CommitmentGenerator />}
           {role === "recipient" && (
             <RecipientDashboard
-              demoState={escrowData || demoState}
-              connectedRecipient={walletPubkey}
+              escrowData={escrowData}
+              demoState={demoState}
               addEvent={addEvent}
               updateLastEvent={updateLastEvent}
               txEvents={txEvents}
@@ -211,6 +253,10 @@ export default function App() {
           {role === "status" && <StatusChecker />}
         </div>
       </main>
+
+      <footer className="app-footer">
+        ZK B2B Payments · Circom · SnarkJS · Anchor · React · Dodo Payments — Hackathon 2026
+      </footer>
     </div>
   );
 }
