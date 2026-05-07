@@ -1,4 +1,5 @@
 import { useState } from "react";
+import axios from "axios";
 
 const IconSearch   = () => <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4"><circle cx="6" cy="6" r="4"/><path d="M10 10l2 2" strokeLinecap="round"/></svg>;
 const IconExternal = () => <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M4.5 2H2a1 1 0 00-1 1v6a1 1 0 001 1h6a1 1 0 001-1V6.5M9 2H6.5M9 2v2.5M9 2L5 6" strokeLinecap="round" strokeLinejoin="round"/></svg>;
@@ -16,17 +17,26 @@ export default function StatusChecker() {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
 
-  const BASE = import.meta.env.VITE_API_URL || "http://localhost:3001";
+  // Use the same base URL logic as the rest of the app
+  function getApiBase() {
+    if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+    if (window.location.hostname.includes("github.dev")) {
+      const domain = window.location.hostname
+        .replace(/-5000\./, "-3001.").replace(/-5173\./, "-3001.");
+      return `https://${domain}/api`;
+    }
+    return "/api";
+  }
 
   const check = async () => {
     if (!pda.trim()) return;
     setLoading(true); setError(null); setResult(null);
     try {
-      const res  = await fetch(`${BASE}/api/status/${pda.trim()}`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setResult(data);
-    } catch (e) { setError(e.message); }
+      const BASE = getApiBase();
+      const res  = await axios.get(`${BASE}/status/${pda.trim()}`);
+      if (res.data.error) throw new Error(res.data.error);
+      setResult(res.data);
+    } catch (e) { setError(e.response?.data?.error || e.message); }
     setLoading(false);
   };
 
