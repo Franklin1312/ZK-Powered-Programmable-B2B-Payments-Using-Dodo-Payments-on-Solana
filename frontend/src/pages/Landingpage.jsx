@@ -167,7 +167,7 @@ export default function LandingPage({ onEnter, onEnterAs }) {
           </div>
 
           <h1 className="hero-title">
-            <span className="line-1">Programmable B2B Payments</span>
+            <span className="line-1">Zolar</span>
             <span className="line-2">with Zero-Knowledge Proofs</span>
           </h1>
 

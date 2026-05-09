@@ -6,7 +6,7 @@ backend/node_modules/
 .pnp.js
 package-lock.json
 yarn.lock
-
+.agents
 # ─── Frontend Build & Output ──────────────────────────────
 frontend/dist/
 frontend/.turbo/

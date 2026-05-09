@@ -142,9 +142,9 @@ export default function App() {
       {/* ── Header ──────────────────────────────────────────────────── */}
       <header className="app-header">
         <div className="header-brand" onClick={() => setScreen("landing")}>
-          <div className="brand-mark"><IconShield /></div>
+          <img src="/logo1.png" alt="Zolar Logo" style={{ width: 32, height: 32, borderRadius: 8 }} />
           <div>
-            <div className="brand-title">B2B Payments</div>
+            <div className="brand-title">Zolar</div>
             <div className="brand-sub">Zero-Knowledge · Solana · Programmable Escrow</div>
           </div>
         </div>
