@@ -1,7 +1,7 @@
-# Zolar
+# ZKPay
 
 <p align="center">
-  <img src="frontend/public/logo1.png" alt="Zolar Logo" width="200" />
+  <img src="frontend/public/logo1.png" alt="ZKPay Logo" width="200" />
 </p>
 
 > **Colosseum Hackathon Submission** — Fiat payments → ZK-verifiable on-chain escrow on Solana
@@ -15,7 +15,7 @@
 
 ## Overview
 
-**Zolar** is a programmable escrow system that bridges fiat credit card payments (via Dodo Payments) with zero-knowledge proofs and Solana smart contracts. A payer locks USDC into a Solana PDA escrow, and the recipient can only release it by providing a ZK proof that their service met the agreed SLA threshold — without ever revealing the raw metric.
+**ZKPay** is a programmable escrow system that bridges fiat credit card payments (via Dodo Payments) with zero-knowledge proofs and Solana smart contracts. A payer locks USDC into a Solana PDA escrow, and the recipient can only release it by providing a ZK proof that their service met the agreed SLA threshold — without ever revealing the raw metric.
 
 ```
 Payer (credit card) → Dodo Payments → Webhook → Solana PDA escrow
