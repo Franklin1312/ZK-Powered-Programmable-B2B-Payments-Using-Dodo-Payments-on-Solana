@@ -141,15 +141,8 @@ export default function LandingPage({ onEnter, onEnterAs }) {
         {/* Nav */}
         <nav className="landing-nav">
           <div className="landing-brand">
-            <div className="landing-brand-icon">
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <path d="M9 1.5L16 5.5V9.5C16 13.5 12.5 16.5 9 17C5.5 16.5 2 13.5 2 9.5V5.5L9 1.5Z"
-                  stroke="#F59E0B" strokeWidth="1.5" fill="rgba(245,158,11,0.1)" />
-                <path d="M6 9.5l2.5 2.5L12 7.5" stroke="#F59E0B" strokeWidth="1.5"
-                  strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <span className="landing-brand-name">ZK<span>Pay</span></span>
+            <img src="/logo1.png" alt="Zolar Logo" style={{ width: 28, height: 28, borderRadius: 6 }} />
+            <span className="landing-brand-name">Zolar</span>
           </div>
           <div className="landing-live-pill">
             <span className="live-dot" />
@@ -167,7 +160,7 @@ export default function LandingPage({ onEnter, onEnterAs }) {
           </div>
 
           <h1 className="hero-title">
-            <span className="line-1"> Programmable B2B Escrow </span>
+            <span className="line-1"> Programmable B2B </span>
             <span className="line-2">with Zero-Knowledge Proofs</span>
           </h1>
 
